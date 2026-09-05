@@ -233,3 +233,45 @@ def test_the_same_version_twice_is_rejected(tmp_path):
     assert _parse("0 4", 4) is None
     assert _parse("1 5", 4) is None
     assert _parse("just one", 4) is None
+
+
+# --------------------------------------------------------------------------
+# fitting a console opened by double-clicking
+# --------------------------------------------------------------------------
+
+def test_the_summary_fits_a_thirty_line_console():
+    """A console opened from Explorer is about 30 lines tall.
+
+    Going over means the header scrolls off the top, taking the names of the two
+    files being compared with it - and a report about the wrong pair reads
+    exactly like a report about the right one. The sample files produce eleven
+    findings, which is a realistic release, so this is the case that has to fit.
+    """
+    buffer = io.StringIO()
+
+    def console(*args, **kwargs):
+        if kwargs.get("stderr"):
+            return Console(stderr=True)
+        return Console(width=120, file=buffer)
+
+    with mock.patch.object(cli, "someone_is_watching", return_value=True), \
+         mock.patch.object(cli, "read_key", return_value="\x1b"), \
+         mock.patch.object(cli, "Console", console):
+        cli.main([str(ROOT / "localisations_1_2_0.plist"),
+                  str(ROOT / "localisations_1_2_1.plist")])
+
+    height = len(buffer.getvalue().splitlines())
+    assert height <= 30, f"summary is {height} lines and will scroll its header away"
+
+
+def test_the_files_being_compared_are_named_at_the_bottom_too():
+    """Insurance for a console shorter than the summary.
+
+    The header can always scroll off on a small enough window, so the pair is
+    named again immediately above the key legend, where the reader is looking.
+    """
+    output = _run_interactive("\x1b")
+    tail = "\n".join(output.splitlines()[-6:])
+    assert "localisations_1_2_0.plist" in tail
+    assert "localisations_1_2_1.plist" in tail
+    assert "(live)" in tail and "(about to ship)" in tail

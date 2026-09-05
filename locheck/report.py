@@ -251,18 +251,31 @@ def _header(report: Report, auto_detected: int = 0) -> Panel:
         Text(_friendly(report.candidate_path), style="bold"),
         f"version {report.candidate_version}",
     )
+    # How many were on disk goes in the title rather than on a row of its own.
+    # Naming two files out of ten without mentioning the other eight invites the
+    # reader to assume these were the only candidates - and their idea of what is
+    # live may not be the newest file in the folder. It still has to be said; it
+    # does not need a line, and the whole summary has to fit a 30-line console.
+    title = "Localisation release check"
     if auto_detected:
-        # Say how many were on disk. Naming two files out of ten without
-        # mentioning the other eight invites the reader to assume these were the
-        # only candidates - and their idea of what is live may not be the newest
-        # file sitting in the folder.
-        note = "newest two of " + str(auto_detected) + " versions found here"
-        grid.add_row("", Text(note, style="dim italic"), "")
-    return Panel(grid, title="Localisation release check", title_align="left",
+        title += "   newest two of " + str(auto_detected) + " versions found here"
+    return Panel(grid, title=title, title_align="left",
                  box=box.ROUNDED, padding=(0, 1))
 
 
-def _footer(report: Report, hidden: int) -> Table:
+def _footer(report: Report, hidden: int) -> Group:
+    """Which two files were compared, and the counts, in two lines.
+
+    This was four boxed tiles, which is four lines to carry four numbers. The
+    whole summary has to fit a console opened by double-clicking - about thirty
+    lines - and going over means the header scrolls off the top, taking the names
+    of the files being compared with it.
+
+    So the pair is named here as well, at the bottom where the reader is already
+    looking. It is the one piece of context that makes the rest of the report
+    mean anything: a report about the wrong two files reads exactly like a report
+    about the right two.
+    """
     fixed = sum(1 for f in report.findings if f.severity is Severity.RESOLVED)
     stats = [
         ("strings compared", report.strings_compared, "white"),
@@ -273,19 +286,23 @@ def _footer(report: Report, hidden: int) -> Table:
     if hidden:
         stats.append(("pre-existing", hidden, "cyan"))
 
-    # A ratio grid rather than Columns: Columns sizes to content, which leaves
-    # the tiles ragged and wrapping on a narrow terminal.
-    row = Table.grid(expand=True)
-    tiles = []
-    for label, value, colour in stats:
-        row.add_column(ratio=1)
-        tile = Table.grid(expand=True)
-        tile.add_column(justify="center")
-        tile.add_row(Text(str(value), style=f"bold {colour}"))
-        tile.add_row(Text(label, style="dim"))
-        tiles.append(Panel(tile, box=box.ROUNDED, padding=(0, 1)))
-    row.add_row(*tiles)
-    return row
+    pair = (
+        Text("  ")
+        + Text(_friendly(report.baseline_path), style="bold")
+        + Text(" (live)", style="dim")
+        + Text("  ->  ", style="dim")
+        + Text(_friendly(report.candidate_path), style="bold")
+        + Text(" (about to ship)", style="dim")
+    )
+
+    counts = Text("  ")
+    for index, (label, value, colour) in enumerate(stats):
+        if index:
+            counts.append("   ", style="dim")
+        counts.append(str(value), style=f"bold {colour}")
+        counts.append(" " + label, style="dim")
+
+    return Group(pair, counts)
 
 
 def _shown(report: Report, show_all: bool):
@@ -317,7 +334,6 @@ def render_summary(
 
     visible, hidden, numbers = _shown(report, show_all)
     if visible:
-        console.print()
         console.print(_summary_table(visible, numbers))
 
     if with_footer:

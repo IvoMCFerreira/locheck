@@ -39,7 +39,6 @@ set "PY=py -3"
 goto run
 
 :run
-echo.
 %PY% -m locheck %*
 set "CODE=%ERRORLEVEL%"
 echo.
