@@ -122,8 +122,16 @@ class Report:
 
     @property
     def flagged(self) -> list[Finding]:
-        """Findings that ask the releaser to do something."""
-        return [f for f in self.findings if f.severity.value <= Severity.LOW.value]
+        """Findings that ask the releaser to do something before shipping.
+
+        LOW is deliberately excluded. It is shown in the report but does not
+        count towards "need action" or fail --strict: an unescaped percent in a
+        promo string is worth knowing about and is not worth holding a release
+        for. Counting it would let a marketing-heavy release show twenty items
+        of "work" that nobody intends to do, which is how a checklist becomes
+        something people skip.
+        """
+        return [f for f in self.findings if f.severity.value <= Severity.MEDIUM.value]
 
     def as_dict(self) -> dict:
         return {

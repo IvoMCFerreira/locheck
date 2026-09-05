@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from functools import lru_cache
 
 from .model import Problem, Severity
 
@@ -70,13 +71,34 @@ _PLACEHOLDER = re.compile(
 _TOKEN = re.compile(r"([A-Za-z]+):\[([^\]]*)\]")
 
 
-def scan_placeholders(text: str) -> tuple[list[str], list[int]]:
-    """Return (argument placeholders, offsets of stray '%' signs).
+def _reads_as_percentage(text: str, index: int) -> bool:
+    """Whether the '%' at `index` is a percent sign in prose.
 
-    `%%` is an escaped literal percent, so it is consumed but not returned as an
-    argument - a translator writing "100%%" is not passing a value to the client.
-    Any '%' the grammar could not consume is malformed, which is the failure mode
-    that actually crashes clients.
+    "50% off", "100% complete", and the French "50 %" with its non-breaking
+    space are ordinary copy, and a promotions release is full of them. Reporting
+    every one buries the real findings under a wall of items nobody intends to
+    act on, which is precisely how a release checklist becomes something people
+    skip.
+
+    A digit immediately before the sign is a strong signal and a cheap one. It
+    does not weaken the checks that matter: the two genuine corruptions in the
+    sample data - "Commence dans % ..." and "До начала %..." - have a letter
+    before the sign, not a digit, and are still reported.
+    """
+    cursor = index - 1
+    if cursor >= 0 and text[cursor] in "   ":  # fr/ru put a space before %
+        cursor -= 1
+    return cursor >= 0 and text[cursor].isdigit()
+
+
+@lru_cache(maxsize=8192)
+def _scan(text: str) -> tuple[tuple[str, ...], tuple[int, ...]]:
+    """The scan itself, memoised.
+
+    Every rule compares a translation against the reference string, so on a file
+    with fifteen languages the reference is scanned fifteen times per entry. The
+    inputs are immutable strings and the work is pure, so caching turns that back
+    into once. On a 150k-string file this is most of the runtime.
     """
     tokens: list[str] = []
     consumed: set[int] = set()
@@ -84,8 +106,26 @@ def scan_placeholders(text: str) -> tuple[list[str], list[int]]:
         consumed.update(range(match.start(), match.end()))
         if match.group(2) != "%":
             tokens.append(match.group(0))
-    malformed = [i for i, ch in enumerate(text) if ch == "%" and i not in consumed]
-    return tokens, malformed
+    malformed = [
+        i
+        for i, ch in enumerate(text)
+        if ch == "%" and i not in consumed and not _reads_as_percentage(text, i)
+    ]
+    return tuple(tokens), tuple(malformed)
+
+
+def scan_placeholders(text: str) -> tuple[list[str], list[int]]:
+    """Return (argument placeholders, offsets of stray '%' signs).
+
+    `%%` is an escaped literal percent, so it is consumed but not returned as an
+    argument - a translator writing "100%%" is not passing a value to the client.
+    Any '%' the grammar could not consume is malformed, which is the failure mode
+    that actually crashes clients - except a percentage in prose, see above.
+
+    Fresh lists are handed back so a caller can never mutate the cached result.
+    """
+    tokens, malformed = _scan(text)
+    return list(tokens), list(malformed)
 
 
 def _signature(tokens: list[str]) -> Counter:
@@ -294,11 +334,13 @@ def rule_line_structure(
         return None
 
     expected, found = reference.count("\\n"), text.count("\\n")
-    if expected == found or expected == 0:
+    if expected == 0:
         return None
-    # Only complain about losing structure. Gaining a break is usually a
-    # translator wrapping a longer word, which is fine.
-    if found > expected:
+    # Only complain about losing most of the structure. Gaining a break is a
+    # translator wrapping a longer word, and dropping one of four is a
+    # legitimate re-wrap - neither is a defect. Halving or collapsing the line
+    # count is not something a translation does on purpose.
+    if found > expected // 2:
         return None
 
     return Problem(
@@ -347,14 +389,24 @@ def _normalise_number(raw: str) -> str:
 _SPELLABLE_BELOW = 10
 
 
-def _numbers(text: str, significant_only: bool = False) -> Counter:
-    found = Counter()
+@lru_cache(maxsize=8192)
+def _number_counts(text: str, significant_only: bool) -> tuple[tuple[str, int], ...]:
+    found: Counter = Counter()
     for match in _NUMBER.finditer(text):
         value = _normalise_number(match.group(0))
         if significant_only and float(value) < _SPELLABLE_BELOW:
             continue
         found[value] += 1
-    return found
+    return tuple(found.items())
+
+
+def _numbers(text: str, significant_only: bool = False) -> Counter:
+    """Memoised for the same reason as the placeholder scan; see `_scan`.
+
+    A fresh Counter is built each call so subtraction by the caller cannot
+    disturb the cache.
+    """
+    return Counter(dict(_number_counts(text, significant_only)))
 
 
 def rule_numbers(key: str, lang: str, text: str, entry: dict[str, str]) -> Problem | None:

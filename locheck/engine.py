@@ -16,6 +16,8 @@ the report's job, not this module's.
 
 from __future__ import annotations
 
+import re
+
 from . import langcodes, locate
 from .loader import LocFile, version_from_filename
 from .model import Finding, Report, Severity
@@ -107,6 +109,22 @@ def _string_findings(baseline: LocFile, candidate: LocFile, index):
             findings.append(primary)
 
     return findings, changed
+
+
+_COSMETIC = re.compile(r"[^\w%@]+", re.UNICODE)
+
+
+def _substantive_change(old: str, new: str) -> bool:
+    """Whether a source edit could plausibly invalidate its translations.
+
+    Retyping "Play now" as "Play now!" does not make the French wrong, and
+    reporting it teaches the releaser that this check is noise. Only casing,
+    punctuation and whitespace are treated as cosmetic - every word, digit and
+    placeholder still counts, so "30 seconds" becoming "3 seconds" is a
+    substantive change even though it is a one-character edit.
+    """
+    normalise = lambda s: _COSMETIC.sub(" ", s.lower()).strip()
+    return normalise(old) != normalise(new)
 
 
 def _file_findings(baseline: LocFile, candidate: LocFile, index):
@@ -231,6 +249,8 @@ def _file_findings(baseline: LocFile, candidate: LocFile, index):
         new_source = reference_for(cand_entry)
         if not old_source or not new_source or old_source == new_source:
             continue
+        if not _substantive_change(old_source, new_source):
+            continue  # a typo or punctuation fix does not invalidate a translation
 
         stale = sorted(
             lang
@@ -270,6 +290,8 @@ def _file_findings(baseline: LocFile, candidate: LocFile, index):
     # English. Only reported for languages this release added or extended, since
     # a long-standing partial language is a product decision, not a regression.
     for lang in sorted(candidate.languages):
+        if reference_for({lang: ""}) is not None:
+            continue  # missing en-US is key.no_reference's finding, not this one
         covered = {k for k, e in candidate.entries.items() if lang in e}
         gaps = sorted(set(candidate.entries) - covered)
         if not gaps or not covered:

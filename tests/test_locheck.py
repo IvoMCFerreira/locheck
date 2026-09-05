@@ -46,8 +46,13 @@ CANDIDATE = ROOT / "localisations_1_2_1.plist"
         # The two real corruptions in the sample data.
         ("Commence dans % ...", [], 1),
         ("До начала %...", [], 1),
-        # A bare trailing % is undefined behaviour if the string is formatted.
-        ("Win 100%", [], 1),
+        # A percentage in prose is copy, not a broken placeholder.
+        ("Win 100%", [], 0),
+        ("Save 50% today", [], 0),
+        ("Économisez 50 % aujourd'hui", [], 0),
+        # ...but a stray % that is not a percentage still counts.
+        ("Win a %", [], 1),
+        ("Give %@ and %", ["%@"], 1),
     ],
 )
 def test_scan_placeholders(text, tokens, malformed):
@@ -309,13 +314,17 @@ def test_positional_placeholders_may_be_reordered_freely():
     assert rule_placeholders("k", "fr", entry["fr"], entry) is None
 
 
-def test_a_percent_in_marketing_copy_is_not_a_ship_blocker():
-    """"50% off" once parsed as the octal placeholder "% o" and reported a type clash."""
+def test_a_percent_in_marketing_copy_is_not_flagged_at_all():
+    """"50% off" once parsed as the octal placeholder "% o" and reported a type clash.
+
+    A promotions release is full of these. Reporting them at any severity buries
+    the findings that matter, so a digit before the sign settles it as prose.
+    """
     from locheck.rules import rule_placeholders
 
     entry = {"en-US": "50% off today", "fr": "50% de réduction"}
-    problem = rule_placeholders("k", "fr", entry["fr"], entry)
-    assert problem is not None and problem.severity is Severity.LOW
+    assert rule_placeholders("k", "fr", entry["fr"], entry) is None
+    assert rule_placeholders("k", "en-US", entry["en-US"], entry) is None
 
 
 def test_a_stray_percent_in_a_real_format_string_still_blocks():
