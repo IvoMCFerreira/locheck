@@ -19,7 +19,7 @@ from __future__ import annotations
 from . import langcodes, locate
 from .loader import LocFile, version_from_filename
 from .model import Finding, Report, Severity
-from .rules import REFERENCE_LANG, STRING_RULES
+from .rules import REFERENCE_LANG, STRING_RULES, reference_for
 
 
 def _classify(old_problem, new_problem, existed_before, key, lang, before, after):
@@ -89,7 +89,7 @@ def _string_findings(baseline: LocFile, candidate: LocFile, index):
                 )
                 if finding is not None:
                     finding.line = index.string(key, lang)
-                    finding.reference = langs.get(REFERENCE_LANG)
+                    finding.reference = reference_for(langs)
                     findings.append(finding)
                     break  # one finding per string: don't stack overlapping causes
 
@@ -176,10 +176,112 @@ def _file_findings(baseline: LocFile, candidate: LocFile, index):
                 title="Text ID removed",
                 detail="was live and is gone - any client still requesting it shows a blank",
                 key=key,
-                before=baseline.entries[key].get(REFERENCE_LANG),
+                before=reference_for(baseline.entries[key]),
                 action=(
                     "Confirm no shipped client build still requests this ID. Old app "
                     "versions outlive content updates."
+                ),
+            )
+        )
+
+    # --- keys defined twice in the same file -------------------------------
+    for path_parts, first, repeat in index.duplicates:
+        name = path_parts[-1]
+        findings.append(
+            Finding(
+                severity=Severity.HIGH,
+                code="key.duplicated",
+                title="Defined twice in the file",
+                detail=(
+                    "'" + name + "' appears at line " + str(first) + " and again at line "
+                    + str(repeat) + " - the parser keeps the second and discards the first"
+                ),
+                key=name if len(path_parts) > 1 else None,
+                line=repeat,
+                action=(
+                    "Delete or merge the duplicate. Whichever copy comes first is "
+                    "being thrown away without warning."
+                ),
+            )
+        )
+
+    # --- source reworded, translations left behind -------------------------
+    # The blind spot every per-string rule shares: each translation can be
+    # perfectly well-formed and still be wrong, because it answers a question
+    # the English text no longer asks. Nothing about the stale string itself
+    # looks broken - only its relationship to a source that moved.
+    for key, base_entry in baseline.entries.items():
+        cand_entry = candidate.entries.get(key)
+        if cand_entry is None:
+            continue
+        old_source = reference_for(base_entry)
+        new_source = reference_for(cand_entry)
+        if not old_source or not new_source or old_source == new_source:
+            continue
+
+        stale = sorted(
+            lang
+            for lang, text in cand_entry.items()
+            if lang != REFERENCE_LANG
+            and lang in base_entry
+            and base_entry[lang] == text
+        )
+        if not stale:
+            continue
+
+        findings.append(
+            Finding(
+                severity=Severity.HIGH,
+                code="content.stale_translation",
+                title="Source changed, translations did not",
+                detail=(
+                    REFERENCE_LANG + " was reworded but " + str(len(stale)) + " translation"
+                    + ("s" if len(stale) != 1 else "") + " (" + ", ".join(stale) + ") "
+                    "still say what the old English said"
+                ),
+                key=key,
+                line=index.string(key, REFERENCE_LANG),
+                before=old_source,
+                after=new_source,
+                action=(
+                    "Send the new " + REFERENCE_LANG + " text for retranslation, or "
+                    "confirm the reword was cosmetic and the existing translations "
+                    "still hold."
+                ),
+            )
+        )
+
+    # --- a language present on some keys but not others --------------------
+    # A language the client believes it supports but which only covers part of
+    # the file gives players a screen of their own language and then a screen of
+    # English. Only reported for languages this release added or extended, since
+    # a long-standing partial language is a product decision, not a regression.
+    for lang in sorted(candidate.languages):
+        covered = {k for k, e in candidate.entries.items() if lang in e}
+        gaps = sorted(set(candidate.entries) - covered)
+        if not gaps or not covered:
+            continue
+        was_complete = lang in baseline.languages and not [
+            k for k in baseline.entries if lang not in baseline.entries[k]
+        ]
+        if lang in baseline.languages and not was_complete:
+            continue  # already patchy before this release
+
+        findings.append(
+            Finding(
+                severity=Severity.MEDIUM,
+                code="language.partial_coverage",
+                title="Language covers only part of the file",
+                detail=(
+                    "present in " + str(len(covered)) + " of "
+                    + str(len(candidate.entries)) + " entries - these players see "
+                    + REFERENCE_LANG + " on the rest"
+                ),
+                lang=lang,
+                action=(
+                    "Translate the missing entries (" + ", ".join(k[:8] for k in gaps[:4])
+                    + ("…" if len(gaps) > 4 else "")
+                    + "), or confirm the fallback is acceptable."
                 ),
             )
         )
@@ -218,7 +320,7 @@ def _file_findings(baseline: LocFile, candidate: LocFile, index):
 
     # --- keys with no reference language -----------------------------------
     for key, entry in candidate.entries.items():
-        if REFERENCE_LANG not in entry:
+        if reference_for(entry) is None:
             findings.append(
                 Finding(
                     severity=Severity.HIGH,

@@ -13,6 +13,10 @@
 
 2.1. created summary version, extended version, but very verbose and gimmicky to use
 
+Known blind spot worth putting in the README
+tk is Turkmen. The strings are unmistakably Turkish, which is tr. I chose not to flag it: it's a valid ISO 639-1 code, so catching it needs actual language detection, and it's pre-existing in the live file rather than something this release introduced. Same class of bug as jp, but not this release's problem.
+make it work, make it pretty
+
 3. WHAT I'D DO WITH MORE TIME/RESOURCES:
 
 3.1. If I could somehow see the size of the components so I could instantly know if a string will overflow.

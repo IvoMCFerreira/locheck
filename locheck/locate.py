@@ -28,8 +28,14 @@ _SCALARS = {"string", "integer", "real", "true", "false", "data", "date", "array
 class LineIndex:
     """Line numbers for dict-key paths in a plist, keyed by path tuple."""
 
-    def __init__(self, lines: dict[tuple[str, ...], int] | None = None):
+    def __init__(
+        self,
+        lines: dict[tuple[str, ...], int] | None = None,
+        duplicates: list[tuple[tuple[str, ...], int, int]] | None = None,
+    ):
         self._lines = lines or {}
+        #: (path, first line, repeat line) for keys that appear twice.
+        self.duplicates = duplicates or []
 
     def __bool__(self) -> bool:
         return bool(self._lines)
@@ -47,6 +53,7 @@ class LineIndex:
 
 def build(path: str | Path) -> LineIndex:
     lines: dict[tuple[str, ...], int] = {}
+    duplicates: list[tuple[tuple[str, ...], int, int]] = []
     key_path: list[str | None] = []
     pending: list[str | None] = [None]  # the key whose value we are about to meet
     buffer: list[str] = []
@@ -57,7 +64,14 @@ def build(path: str | Path) -> LineIndex:
         if name is None:
             return
         full = tuple(p for p in key_path if p is not None) + (name,)
-        lines.setdefault(full, line)
+        # A repeated key is silent data loss: plistlib keeps the last one and
+        # says nothing, so a text ID pasted twice quietly discards a whole
+        # entry's worth of translation. This walk is the only place that can
+        # see it, because the parsed dict has already thrown the evidence away.
+        if full in lines:
+            duplicates.append((full, lines[full], line))
+            return
+        lines[full] = line
 
     def start(name: str, _attrs: dict) -> None:
         if name == "key":
@@ -91,4 +105,23 @@ def build(path: str | Path) -> LineIndex:
     except (expat.ExpatError, OSError):
         return LineIndex()  # line numbers are a nicety, never a reason to fail
 
-    return LineIndex(lines)
+    return LineIndex(lines, _outermost(duplicates))
+
+
+def _outermost(
+    duplicates: list[tuple[tuple[str, ...], int, int]]
+) -> list[tuple[tuple[str, ...], int, int]]:
+    """Drop duplicates that are merely inside another duplicate.
+
+    Repeating an entry repeats every language key inside it, so a single
+    duplicated text ID otherwise reports once for the ID and once for each of
+    its languages. Only the outermost repeat is a decision someone made; the
+    rest are its shadow.
+    """
+    kept: list[tuple[tuple[str, ...], int, int]] = []
+    for entry in sorted(duplicates, key=lambda d: len(d[0])):
+        path = entry[0]
+        if any(path[: len(seen[0])] == seen[0] for seen in kept):
+            continue
+        kept.append(entry)
+    return kept

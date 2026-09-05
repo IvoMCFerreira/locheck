@@ -23,13 +23,34 @@ from .model import Problem, Severity
 
 REFERENCE_LANG = "en-US"
 
+
+def reference_for(entry: dict[str, str]) -> str | None:
+    """The source string for an entry, tolerating how the code was cased.
+
+    `en-US`, `en-us` and `EN_US` are the same language to every client that
+    parses BCP 47, and files edited by many hands drift on this. Matching the
+    constant exactly meant one lowercase key turned every placeholder check in
+    that entry off while reporting only "no reference language".
+    """
+    if REFERENCE_LANG in entry:
+        return entry[REFERENCE_LANG]
+    wanted = REFERENCE_LANG.lower().replace("_", "-")
+    for code, text in entry.items():
+        if code.lower().replace("_", "-") == wanted:
+            return text
+    return None
+
+
+def _is_reference(lang: str) -> bool:
+    return lang.lower().replace("_", "-") == REFERENCE_LANG.lower()
+
 # printf-style placeholders, close to what Apple/Foundation accepts:
 #   %@  %d  %u  %.2f  %1$@  %ld  %%
 _PLACEHOLDER = re.compile(
     r"""
     %                          # start
     (?:(\d+)\$)?               # positional argument, e.g. %1$@
-    [-+ 0#]*                   # flags
+    [-+0#]*                    # flags - see note below on the missing space
     \d*                        # width
     (?:\.\d+)?                 # precision
     (?:hh|h|ll|l|L|z|j|t|q)?   # length modifier
@@ -37,6 +58,13 @@ _PLACEHOLDER = re.compile(
     """,
     re.VERBOSE,
 )
+# printf allows a space flag ("% d" prints a leading space before positives) and
+# the first version of this pattern accepted it. That made "50% off" parse as the
+# octal placeholder "% o", and "50% de réduction" as "% d" - so the tool reported
+# a type mismatch between two perfectly good marketing strings. The space flag is
+# vanishingly rare in UI copy and "% <letter>" in prose is not, so it is dropped.
+# A bare percent now falls through to the malformed branch, which is correct: in
+# a format string a literal percent has to be written "%%".
 
 # The in-house substitution syntax used for share text: A:[in Country/in the world]
 _TOKEN = re.compile(r"([A-Za-z]+):\[([^\]]*)\]")
@@ -61,13 +89,37 @@ def scan_placeholders(text: str) -> tuple[list[str], list[int]]:
 
 
 def _signature(tokens: list[str]) -> Counter:
-    """Compare placeholders by conversion type and count, ignoring width/flags.
+    """Placeholders by conversion type and count, ignoring width and padding.
 
-    `%@` vs `%u` is a type mismatch and can crash. `%2$@` vs `%@` is a reordering
-    the client handles. Two `%u` vs one is a real difference. Width and padding
-    are cosmetic, so they are not part of the comparison.
+    `%@` vs `%u` is a type mismatch and can crash. Two `%u` vs one is a real
+    difference. Width and padding are cosmetic, so they are not compared.
     """
     return Counter(tok[-1] for tok in tokens)
+
+
+def _uses_positional(tokens: list[str]) -> bool:
+    return any("$" in tok for tok in tokens)
+
+
+def _order(tokens: list[str]) -> list[str]:
+    return [tok[-1] for tok in tokens]
+
+
+def _placeholders_agree(ref_tokens: list[str], tokens: list[str]) -> bool:
+    """Whether a translation's placeholders are safe against the source's.
+
+    Order matters unless the string says otherwise. A client filling
+    non-positional placeholders walks them left to right, so turning
+    "Give %@ to %u" into "Donne %u à %@" hands a string where an integer is
+    expected. Comparing multisets alone - which this did at first - calls that
+    pair identical and waves a crash through.
+
+    Positional placeholders (`%1$@`) exist precisely so translators can reorder,
+    so when either side uses them only the multiset is compared.
+    """
+    if _uses_positional(ref_tokens) or _uses_positional(tokens):
+        return _signature(ref_tokens) == _signature(tokens)
+    return _order(ref_tokens) == _order(tokens)
 
 
 def _show(tokens: list[str]) -> str:
@@ -99,34 +151,65 @@ def rule_placeholders(
 
     tokens, malformed = scan_placeholders(text)
 
-    reference = entry.get(REFERENCE_LANG)
+    reference = reference_for(entry)
     ref_tokens, ref_malformed = ([], []) if reference is None else scan_placeholders(reference)
     usable_reference = (
-        reference is not None and reference.strip() and not ref_malformed and lang != REFERENCE_LANG
+        reference is not None and reference.strip() and not ref_malformed
+        and not _is_reference(lang)
     )
 
     if malformed:
         near = ", ".join(repr(text[i : i + 5]) for i in malformed[:3])
-        fix = (
-            "Compare with " + REFERENCE_LANG + " (" + _show(ref_tokens) + ") and restore "
-            "the placeholder, or escape a literal percent sign as %%."
-            if usable_reference
-            else "Complete the placeholder, or escape a literal percent sign as %%."
-        )
+        # Is this entry a format string at all? If the source language passes
+        # values to the client, a stray '%' is a truncated placeholder and a
+        # crash. If nothing in the entry uses placeholders, it is almost always
+        # a literal percent in marketing copy - still worth escaping, not worth
+        # blocking a release over.
+        formatted = bool(ref_tokens) or bool(tokens)
         return Problem(
             code="placeholder.malformed",
-            title="Malformed placeholder",
-            detail="stray '%' near " + near + " - the client may crash formatting this",
-            severity=Severity.BLOCKER,
-            action=fix,
+            title="Malformed placeholder" if formatted else "Unescaped percent sign",
+            detail=(
+                "stray '%' near " + near
+                + (
+                    " - the client may crash formatting this"
+                    if formatted
+                    else " - harmless unless this string is format-processed"
+                )
+            ),
+            severity=Severity.BLOCKER if formatted else Severity.LOW,
+            action=(
+                "Compare with " + REFERENCE_LANG + " (" + _show(ref_tokens) + ") and "
+                "restore the placeholder."
+                if formatted and usable_reference
+                else "Write a literal percent sign as %% so it survives formatting."
+            ),
             spans=tuple((i, i + 1) for i in malformed),
         )
 
     if not usable_reference:
         return None
 
-    if _signature(ref_tokens) == _signature(tokens):
+    if _placeholders_agree(ref_tokens, tokens):
         return None
+
+    if _signature(ref_tokens) == _signature(tokens):
+        # Same placeholders, different order, and no positional markers to make
+        # that safe. The client fills them left to right.
+        return Problem(
+            code="placeholder.order",
+            title="Placeholders in a different order",
+            detail=(
+                REFERENCE_LANG + " orders them " + " ".join(_order(ref_tokens))
+                + ", this one " + " ".join(_order(tokens))
+                + " - values are filled in order, so they will land in the wrong slots"
+            ),
+            severity=Severity.BLOCKER,
+            action=(
+                "Restore the " + REFERENCE_LANG + " order, or make every placeholder "
+                "positional (%1$..., %2$...) so the order can safely differ."
+            ),
+        )
 
     missing = _signature(ref_tokens) - _signature(tokens)
     extra = _signature(tokens) - _signature(ref_tokens)
@@ -166,8 +249,8 @@ def rule_tokens(
             spans=tuple(unclosed),
         )
 
-    reference = entry.get(REFERENCE_LANG)
-    if lang == REFERENCE_LANG or reference is None:
+    reference = reference_for(entry)
+    if _is_reference(lang) or reference is None:
         return None
 
     expected = {m.group(1) for m in _TOKEN.finditer(reference)}
@@ -204,9 +287,9 @@ def rule_line_structure(
     five lines. Unlike word count, `\\n` count is not something a language can
     legitimately differ on, so this compares directly against en-US.
     """
-    if not text.strip() or lang == REFERENCE_LANG:
+    if not text.strip() or _is_reference(lang):
         return None
-    reference = entry.get(REFERENCE_LANG)
+    reference = reference_for(entry)
     if reference is None or not reference.strip():
         return None
 
@@ -285,9 +368,9 @@ def rule_numbers(key: str, lang: str, text: str, entry: dict[str, str]) -> Probl
     reported. Languages routinely add digits the source spells out ("five
     consecutive" becomes "5 連続"), and flagging that would bury the real signal.
     """
-    if not text.strip() or lang == REFERENCE_LANG:
+    if not text.strip() or _is_reference(lang):
         return None
-    reference = entry.get(REFERENCE_LANG)
+    reference = reference_for(entry)
     if reference is None or not reference.strip():
         return None
 
@@ -339,9 +422,9 @@ def rule_token_options(
     translation offers two, the client either indexes out of bounds or silently
     shows the wrong one.
     """
-    if not text.strip() or lang == REFERENCE_LANG:
+    if not text.strip() or _is_reference(lang):
         return None
-    reference = entry.get(REFERENCE_LANG)
+    reference = reference_for(entry)
     if reference is None:
         return None
 
@@ -384,9 +467,9 @@ def rule_length(key: str, lang: str, text: str, entry: dict[str, str]) -> Proble
     The threshold is generous on purpose. German runs ~30% longer than English
     as a matter of course; 2.5x is well past normal variation.
     """
-    if not text.strip() or lang == REFERENCE_LANG:
+    if not text.strip() or _is_reference(lang):
         return None
-    reference = entry.get(REFERENCE_LANG)
+    reference = reference_for(entry)
     if reference is None or len(reference.strip()) < 10:
         return None
 

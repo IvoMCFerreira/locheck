@@ -283,6 +283,103 @@ def test_blockers_in_a_string_carry_a_line_number():
 
 
 # --------------------------------------------------------------------------
+# gaps found by attacking the tool rather than the data
+# --------------------------------------------------------------------------
+
+def test_swapping_two_placeholders_is_a_blocker(tmp_path):
+    """Non-positional placeholders are filled left to right, so order is load-bearing.
+
+    An earlier version compared placeholders as an unordered multiset and waved
+    this straight through.
+    """
+    from locheck.rules import rule_placeholders
+
+    entry = {"en-US": "Give %@ to %u", "fr": "Donne %u à %@"}
+    problem = rule_placeholders("k", "fr", entry["fr"], entry)
+    assert problem is not None
+    assert problem.code == "placeholder.order"
+    assert problem.severity is Severity.BLOCKER
+
+
+def test_positional_placeholders_may_be_reordered_freely():
+    """`%1$@` exists so translators can move arguments. Do not punish them for it."""
+    from locheck.rules import rule_placeholders
+
+    entry = {"en-US": "Give %1$@ to %2$u", "fr": "À %2$u, donne %1$@"}
+    assert rule_placeholders("k", "fr", entry["fr"], entry) is None
+
+
+def test_a_percent_in_marketing_copy_is_not_a_ship_blocker():
+    """"50% off" once parsed as the octal placeholder "% o" and reported a type clash."""
+    from locheck.rules import rule_placeholders
+
+    entry = {"en-US": "50% off today", "fr": "50% de réduction"}
+    problem = rule_placeholders("k", "fr", entry["fr"], entry)
+    assert problem is not None and problem.severity is Severity.LOW
+
+
+def test_a_stray_percent_in_a_real_format_string_still_blocks():
+    from locheck.rules import rule_placeholders
+
+    entry = {"en-US": "Starting in %u...", "ru": "До начала %..."}
+    problem = rule_placeholders("k", "ru", entry["ru"], entry)
+    assert problem.severity is Severity.BLOCKER
+
+
+def test_reference_language_is_matched_regardless_of_casing():
+    """One lowercase `en-us` key used to silently disable every check in that entry."""
+    from locheck.rules import reference_for, rule_placeholders
+
+    entry = {"en-us": "Buy %@", "fr": "Achète"}
+    assert reference_for(entry) == "Buy %@"
+    assert rule_placeholders("k", "fr", entry["fr"], entry) is not None
+
+
+def test_a_reworded_source_with_untouched_translations_is_flagged(tmp_path):
+    """The blind spot no per-string rule can see: a translation that is still
+    well-formed but now answers a question the English text stopped asking."""
+    live = _write(tmp_path, "live.plist", "1.0.0",
+                  {"k": {"en-US": "Win 100 coins", "fr": "Gagne 100 pièces"}})
+    cand = _write(tmp_path, "cand.plist", "1.0.1",
+                  {"k": {"en-US": "Claim your daily reward", "fr": "Gagne 100 pièces"}})
+    codes = {f.code for f in analyse(load(live), load(cand)).findings}
+    assert "content.stale_translation" in codes
+
+
+def test_a_language_rolled_out_to_only_some_keys_is_flagged(tmp_path):
+    live = _write(tmp_path, "live.plist", "1.0.0",
+                  {"k1": {"en-US": "One"}, "k2": {"en-US": "Two"}})
+    cand = _write(tmp_path, "cand.plist", "1.0.1",
+                  {"k1": {"en-US": "One", "ja": "一"}, "k2": {"en-US": "Two"}})
+    partial = [f for f in analyse(load(live), load(cand)).findings
+               if f.code == "language.partial_coverage"]
+    assert [f.lang for f in partial] == ["ja"]
+
+
+def test_a_duplicated_text_id_is_reported_once(tmp_path):
+    """plistlib keeps the last of two identical keys and says nothing.
+
+    Reported once for the entry, not once for every language inside it.
+    """
+    live = _write(tmp_path, "live.plist", "1.0.0", {"same": {"en-US": "First"}})
+    cand = tmp_path / "dup.plist"
+    cand.write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<plist version="1.0"><dict>\n'
+        "<key>version</key><string>1.0.1</string>\n"
+        "<key>localisations</key><dict>\n"
+        "  <key>same</key><dict><key>en-US</key><string>First</string></dict>\n"
+        "  <key>same</key><dict><key>en-US</key><string>Second</string></dict>\n"
+        "</dict></dict></plist>",
+        encoding="utf-8",
+    )
+    dupes = [f for f in analyse(load(live), load(cand)).findings
+             if f.code == "key.duplicated"]
+    assert len(dupes) == 1
+    assert dupes[0].key == "same"
+
+
+# --------------------------------------------------------------------------
 # hostile input
 # --------------------------------------------------------------------------
 
