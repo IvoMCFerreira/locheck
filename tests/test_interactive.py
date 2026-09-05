@@ -274,4 +274,46 @@ def test_the_files_being_compared_are_named_at_the_bottom_too():
     tail = "\n".join(output.splitlines()[-6:])
     assert "localisations_1_2_0.plist" in tail
     assert "localisations_1_2_1.plist" in tail
-    assert "(live)" in tail and "(about to ship)" in tail
+    assert "(live)" in tail and "(new)" in tail
+
+
+@pytest.mark.parametrize("width", [80, 100, 120, 200, 240])
+def test_the_report_fills_whatever_window_it_is_given(width):
+    """No forced console size: the terminal is measured on every render.
+
+    An earlier launcher pinned the console buffer to 120 columns, so maximising
+    the window left the report boxed into the left 120 with dead space beside
+    it. Nothing is allowed to overflow, and nothing is allowed to fall short.
+    """
+    buffer = io.StringIO()
+
+    def console(*args, **kwargs):
+        if kwargs.get("stderr"):
+            return Console(stderr=True)
+        return Console(width=width, file=buffer)
+
+    with mock.patch.object(cli, "someone_is_watching", return_value=True),          mock.patch.object(cli, "read_key", return_value=""),          mock.patch.object(cli, "Console", console):
+        cli.main([str(ROOT / "localisations_1_2_0.plist"),
+                  str(ROOT / "localisations_1_2_1.plist")])
+
+    lines = [line.rstrip() for line in buffer.getvalue().splitlines()]
+    assert not [l for l in lines if len(l) > width], "content overflowed the window"
+    assert max(len(l) for l in lines) == width, "content did not use the full window"
+
+
+def test_the_compared_pair_stays_on_one_line_at_eighty_columns():
+    """It wrapped to a second line reading just "ship)" before being shortened."""
+    buffer = io.StringIO()
+
+    def console(*args, **kwargs):
+        if kwargs.get("stderr"):
+            return Console(stderr=True)
+        return Console(width=80, file=buffer)
+
+    with mock.patch.object(cli, "someone_is_watching", return_value=True),          mock.patch.object(cli, "read_key", return_value=""),          mock.patch.object(cli, "Console", console):
+        cli.main([str(ROOT / "localisations_1_2_0.plist"),
+                  str(ROOT / "localisations_1_2_1.plist")])
+
+    pair = [l for l in buffer.getvalue().splitlines() if "(live)" in l]
+    assert len(pair) == 1
+    assert "(new)" in pair[0], "the whole comparison must fit on the one line"

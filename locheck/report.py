@@ -286,13 +286,16 @@ def _footer(report: Report, hidden: int) -> Group:
     if hidden:
         stats.append(("pre-existing", hidden, "cyan"))
 
+    # Kept short enough to survive an 80-column console. "(about to ship)" read
+    # better but pushed the line to 81 characters, so it wrapped onto a second
+    # line reading just "ship)" - which is worse than a terser label.
     pair = (
         Text("  ")
         + Text(_friendly(report.baseline_path), style="bold")
         + Text(" (live)", style="dim")
         + Text("  ->  ", style="dim")
         + Text(_friendly(report.candidate_path), style="bold")
-        + Text(" (about to ship)", style="dim")
+        + Text(" (new)", style="dim")
     )
 
     counts = Text("  ")

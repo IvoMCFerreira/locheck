@@ -16,16 +16,14 @@ REM result unless the tool actually produced one.
 setlocal
 cd /d "%~dp0"
 
-REM A console opened by double-clicking is 80 columns, which is narrower than
-REM the report wants - issue titles wrap onto two lines and the detail cards get
-REM cramped. 120 gives everything room.
+REM Deliberately no `mode con` resize here. An earlier version forced the console
+REM to 120 columns to stop issue titles wrapping, but `mode con` sets the screen
+REM *buffer*, and a buffer pinned at 120 cannot grow. Maximising the window then
+REM left the text boxed into the left 120 columns with dead space beside it.
 REM
-REM The second number is the screen *buffer*, not the window, so it is the
-REM scrollback. It has to stay large: setting it to the window height would
-REM leave the reader unable to scroll back to the blockers, which is the whole
-REM point of the report. If the console refuses to resize, the tool adapts to
-REM whatever width it finds, so the error is not worth showing.
-mode con: cols=120 lines=9000 >nul 2>&1
+REM The tool measures the terminal on every render instead, so it fills whatever
+REM window it is given - including one that was maximised before it started, or
+REM maximised part-way through and then advanced with a keypress.
 
 python -c "import locheck, rich" >nul 2>&1
 if errorlevel 1 goto try_launcher
