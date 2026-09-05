@@ -1,0 +1,78 @@
+"""Reading a single keypress, when there is somebody there to press one.
+
+The report has two audiences in the same person: the ship/no-ship glance, and
+the detail needed to actually fix something. Printing both every time buries the
+first in the second, so the details wait behind a keypress.
+
+The whole feature is conditional on `someone_is_watching()`. A prompt that
+appears in a CI log is a hang, not a feature: the build sits there until it times
+out, with no indication why. So anything that is not a real terminal on both ends
+gets the full report immediately and is never asked a question.
+"""
+
+from __future__ import annotations
+
+import sys
+
+
+def someone_is_watching() -> bool:
+    """Whether there is a human at a terminal who could answer a prompt.
+
+    Both ends have to be a terminal. Output redirected to a file means nobody
+    will see the question; input redirected from one means nobody can answer it.
+    A closed or detached stream raises rather than returning False on some
+    platforms, hence the guard.
+    """
+    try:
+        return bool(sys.stdin.isatty() and sys.stdout.isatty())
+    except (AttributeError, ValueError):
+        return False
+
+
+def read_key() -> str:
+    """Wait for one keypress and return it, without needing Enter.
+
+    Returns "" if the key cannot be read - a detached stdin, an unsupported
+    terminal - so the caller can carry on rather than fail. Ctrl-C and Ctrl-D
+    raise KeyboardInterrupt, because a prompt that cannot be escaped is worse
+    than no prompt.
+    """
+    try:
+        import msvcrt  # Windows
+    except ImportError:
+        pass
+    else:
+        try:
+            key = msvcrt.getwch()
+        except Exception:
+            return ""
+        if key in ("\x03", "\x04"):
+            raise KeyboardInterrupt
+        return key
+
+    try:
+        import termios
+        import tty
+    except ImportError:
+        return ""
+
+    try:
+        descriptor = sys.stdin.fileno()
+        previous = termios.tcgetattr(descriptor)
+    except Exception:
+        return ""
+
+    try:
+        tty.setraw(descriptor)
+        key = sys.stdin.read(1)
+    except Exception:
+        return ""
+    finally:
+        try:
+            termios.tcsetattr(descriptor, termios.TCSADRAIN, previous)
+        except Exception:
+            pass
+
+    if key in ("\x03", "\x04"):
+        raise KeyboardInterrupt
+    return key

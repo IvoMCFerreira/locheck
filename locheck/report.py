@@ -285,6 +285,63 @@ def _footer(report: Report, hidden: int) -> Table:
     return row
 
 
+def _shown(report: Report, show_all: bool):
+    """The findings to display, numbered, plus how many were held back."""
+    visible = [f for f in report.findings if show_all or f.severity is not Severity.INFO]
+    hidden = len(report.findings) - len(visible)
+    numbers = {id(f): i for i, f in enumerate(visible, start=1)}
+    return visible, hidden, numbers
+
+
+def render_summary(
+    report: Report,
+    console: Console,
+    show_all: bool = False,
+    auto_detected: int = 0,
+    with_footer: bool = True,
+) -> int:
+    """The ship/no-ship view. Returns how many findings have detail to expand."""
+    console.print(_header(report, auto_detected))
+    console.print(_verdict(report))
+
+    if report.warnings:
+        console.print()
+        console.print(Panel(
+            Group(*[Text("- " + w) for w in report.warnings]),
+            title="Input warnings - recovered, but worth a look",
+            title_align="left", box=box.ROUNDED, style="yellow", padding=(0, 2),
+        ))
+
+    visible, hidden, numbers = _shown(report, show_all)
+    if visible:
+        console.print()
+        console.print(_summary_table(visible, numbers))
+
+    if with_footer:
+        console.print()
+        console.print(_footer(report, hidden))
+    return len(visible)
+
+
+def render_details(report: Report, console: Console, show_all: bool = False) -> None:
+    """A card per finding: where it is, what it should say, and what to do."""
+    visible, _, numbers = _shown(report, show_all)
+    for severity in Severity:
+        group = [f for f in visible if f.severity is severity]
+        if not group:
+            continue
+        label, style = STYLES[severity]
+        console.print()
+        console.print(
+            Text(f" {label} ", style=style)
+            + Text(f"  {HEADINGS[severity]}", style="bold")
+            + Text(f"  ({len(group)})", style="dim")
+        )
+        for finding in group:
+            console.print()
+            console.print(_card(finding, numbers[id(finding)], report.candidate_path))
+
+
 def render(
     report: Report,
     console: Console | None = None,
@@ -292,50 +349,12 @@ def render(
     summary_only: bool = False,
     auto_detected: int = 0,
 ) -> None:
+    """The whole report at once, for anything that is not a live terminal."""
     console = console or Console()
-
-    console.print(_header(report, auto_detected))
-    console.print(_verdict(report))
-
-    if report.warnings:
-        console.print()
-        console.print(Panel(
-            Group(*[Text("• " + w) for w in report.warnings]),
-            title="Input warnings — recovered, but worth a look",
-            title_align="left", box=box.ROUNDED, style="yellow", padding=(0, 2),
-        ))
-
-    visible = [
-        f for f in report.findings
-        if show_all or f.severity is not Severity.INFO
-    ]
-    hidden = len(report.findings) - len(visible)
-
-    if not visible:
-        console.print()
-        console.print(_footer(report, hidden))
-        return
-
-    numbers = {id(f): i for i, f in enumerate(visible, start=1)}
-
-    console.print()
-    console.print(_summary_table(visible, numbers))
-
+    render_summary(report, console, show_all, auto_detected, with_footer=False)
     if not summary_only:
-        for severity in Severity:
-            group = [f for f in visible if f.severity is severity]
-            if not group:
-                continue
-            label, style = STYLES[severity]
-            console.print()
-            console.print(
-                Text(f" {label} ", style=style)
-                + Text(f"  {HEADINGS[severity]}", style="bold")
-                + Text(f"  ({len(group)})", style="dim")
-            )
-            for finding in group:
-                console.print()
-                console.print(_card(finding, numbers[id(finding)], report.candidate_path))
+        render_details(report, console, show_all)
 
+    _, hidden, _ = _shown(report, show_all)
     console.print()
     console.print(_footer(report, hidden))

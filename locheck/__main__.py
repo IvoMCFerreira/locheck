@@ -8,6 +8,10 @@ cost of a fiddly invocation is that people stop running it:
     locheck new.plist             compare that against the release it replaces
     locheck live.plist new.plist  spell both out
 
+At a terminal the summary is shown first and the per-finding detail waits behind
+a keypress. Redirected, piped or asked for --json it prints everything at once
+and never prompts - a prompt in a CI log is a hang, not a feature.
+
 Whatever gets chosen is printed above the report, so a wrong guess is obvious
 rather than silently producing a confident report about the wrong pair.
 
@@ -30,7 +34,8 @@ from rich.text import Text
 from .discover import DiscoveryError, candidates_in, find_baseline_for, find_pair
 from .engine import analyse
 from .loader import LoadError, load
-from .report import render
+from .interactive import read_key, someone_is_watching
+from .report import render, render_details, render_summary
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -62,7 +67,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--summary",
         action="store_true",
-        help="just the table, without the per-finding detail",
+        help="just the table, and do not offer to expand it",
+    )
+    parser.add_argument(
+        "--details",
+        action="store_true",
+        help="print the full report immediately, without waiting for a keypress",
     )
     parser.add_argument(
         "--json",
@@ -94,6 +104,44 @@ def resolve(files: list[str]) -> tuple[Path, Path, int]:
         return baseline, candidate, len(candidates_in(candidate.parent))
     found = find_pair(Path.cwd())
     return found.live, found.candidate, found.considered
+
+
+def _interactive(report, args, considered: int) -> None:
+    """Show the verdict, then the detail only if it is asked for.
+
+    A releaser deciding whether to ship needs the table. A releaser who has
+    decided to fix something needs the cards. Printing both every time buries
+    the first in the second, so this shows the summary and waits.
+
+    Anything other than the two documented keys expands rather than quits: the
+    cost of an unexpected key showing too much is a scroll, and the cost of it
+    quitting is that the reader loses the report they were about to read.
+    """
+    console = Console()
+    count = render_summary(report, console, args.all, considered)
+    if not count:
+        return
+
+    console.print()
+    console.print(
+        Text("  Press ", style="dim")
+        + Text(".", style="bold cyan")
+        + Text(" to see what each finding is and how to fix it, or ", style="dim")
+        + Text("Esc", style="bold")
+        + Text(" to finish.", style="dim")
+    )
+
+    try:
+        key = read_key()
+    except KeyboardInterrupt:
+        console.print()
+        return
+
+    if key in ("\x1b", "q", "Q"):
+        return
+
+    console.print()
+    render_details(report, console, args.all)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -131,6 +179,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.json:
         print(json.dumps(report.as_dict(), indent=2, ensure_ascii=False))
+    elif not args.summary and not args.details and someone_is_watching():
+        _interactive(report, args, considered)
     else:
         # `guessed` is surfaced inside the header rather than on a line of its
         # own: a silently mis-picked pair produces a report that looks entirely

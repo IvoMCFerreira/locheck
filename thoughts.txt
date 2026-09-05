@@ -24,6 +24,8 @@ run it with no arguments and it takes the latest 2
 3. WHAT I'D DO WITH MORE TIME/RESOURCES:
 
 3.1. If I could somehow see the size of the components so I could instantly know if a string will overflow.
+3.2 I dont know whats in production so I dont know what to compare, assuming we are working like 2 versions ahead or something.
+
 
 
 
