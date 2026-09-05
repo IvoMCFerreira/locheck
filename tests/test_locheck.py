@@ -124,9 +124,16 @@ def test_the_french_fix_is_never_reported_as_a_risk():
 
 
 def test_a_harmless_change_is_not_flagged():
-    """pt-BR gained an accent (`videos` -> `vídeos`). Changed, but not a risk."""
+    """pt-BR gained an accent (`videos` -> `vídeos`). Changed, but not a risk.
+
+    Scoped to the one string: pt-BR is legitimately flagged elsewhere in this
+    file for a mistyped game rule, and that finding is not this test's business.
+    """
     report = analyse(load(LIVE), load(CANDIDATE))
-    assert not [f for f in report.findings if f.lang == "pt-BR"]
+    accent_fix = "d8225439-0a23-404c-857d-8cd37032a606"
+    assert not [
+        f for f in report.findings if f.lang == "pt-BR" and f.key == accent_fix
+    ]
 
 
 def test_most_changed_strings_are_not_flagged():
@@ -149,6 +156,94 @@ def test_most_changed_strings_are_not_flagged():
 
     assert len(changed) == 4
     assert {lang for _, lang in flagged} == {"it", "ru"}
+
+
+# --------------------------------------------------------------------------
+# the quieter checks - these are the ones most at risk of crying wolf
+# --------------------------------------------------------------------------
+
+def test_country_code_masquerading_as_a_language_is_caught():
+    """`jp` is Japan, `ja` is Japanese. A file shipping the former reaches nobody."""
+    from locheck import langcodes
+
+    reason, action = langcodes.problem_with("jp")
+    assert "country code" in reason
+    assert "'ja'" in action
+
+    assert langcodes.problem_with("ja") is None
+    assert langcodes.problem_with("pt-BR") is None  # region subtags are fine
+    assert langcodes.problem_with("en-US") is None
+    assert langcodes.problem_with("tk") is None  # Turkmen: odd here, but valid
+
+
+def test_the_japanese_language_code_is_flagged_in_the_sample():
+    report = analyse(load(LIVE), load(CANDIDATE))
+    jp = [f for f in report.findings if f.code == "language.invalid_code"]
+    assert [f.lang for f in jp] == ["jp"]
+    assert jp[0].severity is Severity.HIGH  # added by this release
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [("4.0", "4"), ("4", "4"), ("0,5", "0.5"), ("1.0", "1"), ("30", "30"), ("1.000", "1000")],
+)
+def test_decimal_separators_do_not_confuse_the_number_check(raw, expected):
+    """`0,5` and `0.5` are the same number; a tool that disagrees flags all of Europe."""
+    from locheck.rules import _normalise_number
+
+    assert _normalise_number(raw) == expected
+
+
+def test_small_numbers_spelled_as_words_are_not_flagged():
+    """The regression this locks: Turkish writes "Rack 1"/"Rack 2" as words.
+
+    `İlk üçgen` and `İkinci üçgen` are first and second. An earlier version of
+    this rule reported that correct translation as a missing number.
+    """
+    from locheck.rules import rule_numbers
+
+    entry = {
+        "en-US": "Rack 1 gives 10 seconds, Rack 2 gives 9, and a 30 second penalty.",
+        "tk": "İlk üçgen 10 saniye, İkinci üçgen 9 saniye, 30 saniye ceza.",
+    }
+    assert rule_numbers("k", "tk", entry["tk"], entry) is None
+
+
+def test_a_mistyped_game_rule_is_still_caught():
+    from locheck.rules import rule_numbers
+
+    entry = {
+        "en-US": "Potting the Cue Ball will result in a 30 seconds penalty.",
+        "pt-BR": "Encaçapar a bola branca resultará em uma penalidade de 3 segundos.",
+    }
+    problem = rule_numbers("k", "pt-BR", entry["pt-BR"], entry)
+    assert problem is not None
+    assert "30" in problem.detail
+    assert "penalty" in problem.detail  # names the sentence, not just the number
+
+
+def test_shorter_translations_are_never_flagged_for_length():
+    """Japanese is routinely a third the length of its English source."""
+    from locheck.rules import rule_length
+
+    entry = {"en-US": "Watch a short video and earn 15 coins today", "jp": "動画で15コイン"}
+    assert rule_length("k", "jp", entry["jp"], entry) is None
+
+
+def test_a_translation_that_will_overflow_its_button_is_flagged():
+    from locheck.rules import rule_length
+
+    entry = {"en-US": "Play as Guest", "de": "Als Gast ohne Registrierung weiterspielen bitte"}
+    problem = rule_length("k", "de", entry["de"], entry)
+    assert problem is not None and problem.severity is Severity.MEDIUM
+
+
+def test_losing_line_breaks_is_flagged_but_gaining_them_is_not():
+    from locheck.rules import rule_line_structure
+
+    entry = {"en-US": r"one\ntwo\nthree", "jp": "onetwothree", "de": r"one\ntwo\nthree\nmore"}
+    assert rule_line_structure("k", "jp", entry["jp"], entry) is not None
+    assert rule_line_structure("k", "de", entry["de"], entry) is None
 
 
 # --------------------------------------------------------------------------

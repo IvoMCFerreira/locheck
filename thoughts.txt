@@ -11,6 +11,8 @@
 
 2. DEVELOPMENT PHASE:
 
+2.1. created summary version, extended version, but very verbose and gimmicky to use
+
 3. WHAT I'D DO WITH MORE TIME/RESOURCES:
 
 3.1. If I could somehow see the size of the components so I could instantly know if a string will overflow.

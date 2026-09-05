@@ -36,7 +36,7 @@ STYLES = {
     Severity.HIGH: ("HIGH", "bold dark_orange"),
     Severity.MEDIUM: ("MEDIUM", "bold yellow"),
     Severity.LOW: ("LOW", "yellow"),
-    Severity.INFO: ("PRE-EXISTING", "cyan"),
+    Severity.INFO: ("EXISTING", "cyan"),
     Severity.RESOLVED: ("FIXED", "bold green"),
 }
 
@@ -59,7 +59,7 @@ def _short_key(key: str | None) -> str:
         return "—"
     if _UUID_KEY.match(key):
         return key.split("-", 1)[0]
-    return key if len(key) <= 14 else key[:13] + "…"
+    return key if len(key) <= 10 else key[:9] + "…"
 
 
 def _excerpt(text: str, spans=(), limit: int = _MAX_EXCERPT) -> Text:
@@ -108,10 +108,10 @@ def _summary_table(findings: list[Finding], numbers: dict[int, int]) -> Table:
         padding=(0, 1),
     )
     table.add_column("#", justify="right", width=3, style="dim")
-    table.add_column("SEVERITY", width=12, no_wrap=True)
+    table.add_column("SEVERITY", width=8, no_wrap=True)
     table.add_column("LINE", justify="right", width=5, style="dim")
-    table.add_column("TEXT ID", width=14, no_wrap=True)
-    table.add_column("LANG", width=6, no_wrap=True)
+    table.add_column("TEXT ID", width=10, no_wrap=True)
+    table.add_column("LANG", width=5, no_wrap=True)
     table.add_column("ISSUE", ratio=1)
 
     for finding in findings:
@@ -220,10 +220,10 @@ def _footer(report: Report, hidden: int) -> Table:
         ("strings compared", report.strings_compared, "white"),
         ("changed", report.strings_changed, "white"),
         ("need action", len(report.flagged), "red" if report.flagged else "green"),
-        ("fixed by this release", fixed, "green"),
+        ("fixed", fixed, "green"),
     ]
     if hidden:
-        stats.append(("pre-existing (--all)", hidden, "cyan"))
+        stats.append(("pre-existing", hidden, "cyan"))
 
     # A ratio grid rather than Columns: Columns sizes to content, which leaves
     # the tiles ragged and wrapping on a narrow terminal.

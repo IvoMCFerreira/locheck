@@ -16,7 +16,7 @@ the report's job, not this module's.
 
 from __future__ import annotations
 
-from . import locate
+from . import langcodes, locate
 from .loader import LocFile, version_from_filename
 from .model import Finding, Report, Severity
 from .rules import REFERENCE_LANG, STRING_RULES
@@ -181,6 +181,38 @@ def _file_findings(baseline: LocFile, candidate: LocFile, index):
                     "Confirm no shipped client build still requests this ID. Old app "
                     "versions outlive content updates."
                 ),
+            )
+        )
+
+    # --- language codes the client will never ask for ----------------------
+    # Graded by whether this release introduced it. A bad code that is already
+    # live is someone else's ticket; a bad code shipping today means a whole
+    # language reaches nobody, and it is invisible in a diff.
+    for lang in sorted(candidate.languages):
+        verdict = langcodes.problem_with(lang)
+        if verdict is None:
+            continue
+        reason, action = verdict
+        is_new = lang not in baseline.languages
+        entries = sorted(k for k, e in candidate.entries.items() if lang in e)
+        findings.append(
+            Finding(
+                severity=Severity.HIGH if is_new else Severity.INFO,
+                code="language.invalid_code",
+                title="Language code is not valid",
+                detail=(
+                    reason
+                    + (
+                        " - added by this release, so these "
+                        + str(len(entries))
+                        + " translations reach no one"
+                        if is_new
+                        else " - already live, not introduced here"
+                    )
+                ),
+                lang=lang,
+                line=index.string(entries[0], lang) if entries else None,
+                action=action,
             )
         )
 

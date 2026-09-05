@@ -193,5 +193,228 @@ def rule_tokens(
     return None
 
 
-#: Evaluated in order, one Problem per string wins.
-STRING_RULES = [rule_empty, rule_placeholders, rule_tokens]
+def rule_line_structure(
+    key: str, lang: str, text: str, entry: dict[str, str]
+) -> Problem | None:
+    """Line breaks are layout, not language.
+
+    These strings carry literal `\\n` escapes that the client turns into line
+    breaks, and the surrounding UI is built around that shape. A translation
+    that drops them all renders as one long run of text in a box designed for
+    five lines. Unlike word count, `\\n` count is not something a language can
+    legitimately differ on, so this compares directly against en-US.
+    """
+    if not text.strip() or lang == REFERENCE_LANG:
+        return None
+    reference = entry.get(REFERENCE_LANG)
+    if reference is None or not reference.strip():
+        return None
+
+    expected, found = reference.count("\\n"), text.count("\\n")
+    if expected == found or expected == 0:
+        return None
+    # Only complain about losing structure. Gaining a break is usually a
+    # translator wrapping a longer word, which is fine.
+    if found > expected:
+        return None
+
+    return Problem(
+        code="layout.line_breaks",
+        title="Line breaks lost",
+        detail=(
+            REFERENCE_LANG + " breaks across " + str(expected + 1) + " lines, this one "
+            "across " + str(found + 1) + " - it will not wrap as the UI expects"
+        ),
+        severity=Severity.MEDIUM,
+        action="Re-add the \\n breaks so the text wraps like " + REFERENCE_LANG + ".",
+    )
+
+
+_NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
+
+
+def _normalise_number(raw: str) -> str:
+    """`4.0`, `4`, `4,0` are the same number. `1.000` is a thousand.
+
+    Locales disagree about decimal separators, and a tool that cannot tell
+    `0,5` from `0.5` would flag every European translation of every price.
+    """
+    parts = raw.replace(",", ".").split(".")
+    if len(parts) == 1:
+        return parts[0].lstrip("0") or "0"
+    if len(parts[-1]) in (1, 2):  # a 1-2 digit tail is a decimal fraction
+        whole = "".join(parts[:-1]).lstrip("0") or "0"
+        fraction = parts[-1].rstrip("0")
+        return whole + ("." + fraction if fraction else "")
+    return "".join(parts).lstrip("0") or "0"  # 3-digit groups are thousands
+
+
+#: Below this, a number is as likely to be spelled out as written in digits.
+#:
+#: Found the hard way: the Turkish pool rules render "Rack 1" and "Rack 2" as
+#: "İlk üçgen" and "İkinci üçgen" - first and second, as words. The English
+#: source does the same thing itself ("every five consecutive pots"). Comparing
+#: digits below ten therefore flags correct translations, and a MEDIUM section
+#: full of correct translations is one the releaser stops reading.
+#:
+#: The cost is real: a translation that dropped "0.5" or turned 1 into 2 slips
+#: through. That is the trade, and it is the right way round - this check exists
+#: to catch a mistyped game rule like "3 seconds" for "30 seconds", and every
+#: number worth mistyping that way has two or more digits.
+_SPELLABLE_BELOW = 10
+
+
+def _numbers(text: str, significant_only: bool = False) -> Counter:
+    found = Counter()
+    for match in _NUMBER.finditer(text):
+        value = _normalise_number(match.group(0))
+        if significant_only and float(value) < _SPELLABLE_BELOW:
+            continue
+        found[value] += 1
+    return found
+
+
+def rule_numbers(key: str, lang: str, text: str, entry: dict[str, str]) -> Problem | None:
+    """Numbers in the source that vanished from the translation.
+
+    Game rules live in these strings - "30 seconds penalty", "150 points". A
+    translated rule that disagrees with the English one is a support ticket, not
+    a crash, but it is still wrong in the player's face.
+
+    Deliberately one-directional: only numbers *missing* from the translation are
+    reported. Languages routinely add digits the source spells out ("five
+    consecutive" becomes "5 連続"), and flagging that would bury the real signal.
+    """
+    if not text.strip() or lang == REFERENCE_LANG:
+        return None
+    reference = entry.get(REFERENCE_LANG)
+    if reference is None or not reference.strip():
+        return None
+
+    missing = _numbers(reference, significant_only=True) - _numbers(text)
+    if not missing:
+        return None
+
+    lost = sorted(set(missing.elements()))
+    quoted = ", ".join(
+        n + ' ("' + phrase + '")' if (phrase := _phrase_around(reference, n)) else n
+        for n in lost
+    )
+    return Problem(
+        code="content.numbers",
+        title="Number missing from translation",
+        detail=REFERENCE_LANG + " mentions " + quoted + ", this translation does not",
+        severity=Severity.MEDIUM,
+        action=(
+            "Check the " + lang + " text states the same values as " + REFERENCE_LANG
+            + " - a mistyped game rule reads as a bug to the player."
+        ),
+    )
+
+
+def _phrase_around(text: str, number: str, width: int = 34) -> str | None:
+    """The words either side of a number in the source.
+
+    Without this the reader is told "en-US mentions 30" and left to find which
+    of several numbers that is in a 500-character rules blob. With it they get
+    "a 30 seconds penalty" and know exactly which sentence to compare.
+    """
+    for match in _NUMBER.finditer(text):
+        if _normalise_number(match.group(0)) != number:
+            continue
+        start = max(0, match.start() - width // 2)
+        end = min(len(text), match.end() + width // 2)
+        return ("…" if start else "") + text[start:end].replace("\\n", " ").strip() + (
+            "…" if end < len(text) else ""
+        )
+    return None
+
+
+def rule_token_options(
+    key: str, lang: str, text: str, entry: dict[str, str]
+) -> Problem | None:
+    """Each `X:[a/b/c]` slot must offer as many choices as the source does.
+
+    The client picks slot N by index. If en-US offers three options and the
+    translation offers two, the client either indexes out of bounds or silently
+    shows the wrong one.
+    """
+    if not text.strip() or lang == REFERENCE_LANG:
+        return None
+    reference = entry.get(REFERENCE_LANG)
+    if reference is None:
+        return None
+
+    expected = {m.group(1): m.group(2).count("/") + 1 for m in _TOKEN.finditer(reference)}
+    if not expected:
+        return None
+    found = {m.group(1): m.group(2).count("/") + 1 for m in _TOKEN.finditer(text)}
+
+    for label, count in sorted(expected.items()):
+        if label in found and found[label] != count:
+            return Problem(
+                code="token.option_count",
+                title="Wrong number of options in a token",
+                detail=(
+                    label + ":[...] offers " + str(found[label]) + " choices, "
+                    + REFERENCE_LANG + " offers " + str(count)
+                    + " - the client selects by index"
+                ),
+                severity=Severity.MEDIUM,
+                action=(
+                    "Make " + label + ":[...] offer " + str(count) + " options in the "
+                    "same order as " + REFERENCE_LANG + "."
+                ),
+            )
+    return None
+
+
+#: A translation this much longer than the source will not fit a UI built for it.
+_OVERFLOW_RATIO = 2.5
+
+
+def rule_length(key: str, lang: str, text: str, entry: dict[str, str]) -> Problem | None:
+    """Translations far longer than the source overflow the box they live in.
+
+    Only *longer* is reported. Languages legitimately differ in density - a
+    Japanese string is routinely a third the length of its English source - so
+    flagging short translations would fire on every CJK entry and teach the
+    releaser to skim past this check.
+
+    The threshold is generous on purpose. German runs ~30% longer than English
+    as a matter of course; 2.5x is well past normal variation.
+    """
+    if not text.strip() or lang == REFERENCE_LANG:
+        return None
+    reference = entry.get(REFERENCE_LANG)
+    if reference is None or len(reference.strip()) < 10:
+        return None
+
+    ratio = len(text) / len(reference)
+    if ratio < _OVERFLOW_RATIO:
+        return None
+
+    return Problem(
+        code="layout.too_long",
+        title="Much longer than the source",
+        detail=(
+            str(len(text)) + " characters against " + str(len(reference)) + " in "
+            + REFERENCE_LANG + " (" + f"{ratio:.1f}" + "x) - likely to overflow its UI"
+        ),
+        severity=Severity.MEDIUM,
+        action="Check this still fits its button or label, or ask for a shorter phrasing.",
+    )
+
+
+#: Evaluated in order; the first rule to fire owns the string, so one broken
+#: string never produces three overlapping findings. Ordered by severity, so a
+#: crash is reported ahead of a layout wobble on the same string.
+STRING_RULES = [
+    rule_empty,
+    rule_placeholders,
+    rule_tokens,
+    rule_token_options,
+    rule_line_structure,
+    rule_numbers,
+    rule_length,
+]
