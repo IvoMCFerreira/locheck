@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 
@@ -67,6 +67,13 @@ class Finding:
     reference: str | None = None
     #: Character ranges in `after` (or `before`, for fixes) worth highlighting.
     spans: tuple[tuple[int, int], ...] = ()
+    #: Other problems with the same string, worst-first, below this one.
+    #:
+    #: A string gets one row in the summary table however many things are wrong
+    #: with it - two rows for one string would inflate the ship/no-ship count.
+    #: But whoever fixes it is editing that string once and should see the whole
+    #: list, so the detail card carries the rest here.
+    also: list = field(default_factory=list)
 
     @property
     def location(self) -> str:
@@ -91,6 +98,10 @@ class Finding:
             "reference": self.reference,
             "before": self.before,
             "after": self.after,
+            "also": [
+                {"severity": f.severity.name, "code": f.code, "detail": f.detail}
+                for f in self.also
+            ],
         }
 
 

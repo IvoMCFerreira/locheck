@@ -122,7 +122,8 @@ def _summary_table(findings: list[Finding], numbers: dict[int, int]) -> Table:
             str(finding.line) if finding.line else "—",
             Text(_short_key(finding.key), style="dim"),
             Text(finding.lang or "—", style="bold" if finding.lang else "dim"),
-            finding.title,
+            Text(finding.title)
+            + (Text(f"  +{len(finding.also)} more", style="dim") if finding.also else Text("")),
         )
     return table
 
@@ -168,6 +169,19 @@ def _card(finding: Finding, number: int, candidate_path: str) -> Panel:
 
     if shown:
         body += [Text(""), strings]
+
+    if finding.also:
+        extra = Table.grid(padding=(0, 1))
+        extra.add_column(width=9, no_wrap=True)
+        extra.add_column(overflow="fold")
+        for other in finding.also:
+            other_label, other_style = STYLES[other.severity]
+            extra.add_row(Text(other_label, style=other_style), Text(other.detail))
+        body += [
+            Text(""),
+            Text("also wrong with this string:", style="dim"),
+            extra,
+        ]
 
     if finding.action:
         # A grid rather than a prefixed Text, so a wrapped action hangs under

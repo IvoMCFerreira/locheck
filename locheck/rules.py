@@ -224,7 +224,7 @@ def rule_placeholders(
         title="Placeholder mismatch",
         detail=REFERENCE_LANG + " has " + _show(ref_tokens) + ", this has " + _show(tokens),
         severity=Severity.BLOCKER,
-        action="Rewrite the " + lang + " string so it " + " and ".join(changes) + ".",
+        action="Rewrite the " + lang + " string: " + ", then ".join(changes) + ".",
     )
 
 

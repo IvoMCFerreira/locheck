@@ -81,6 +81,13 @@ def _string_findings(baseline: LocFile, candidate: LocFile, index):
             if existed_before and before != text:
                 changed += 1
 
+            # Every rule runs. One string still produces one finding - the worst
+            # of them - because the summary table is a ship/no-ship count and a
+            # string listed twice reads as two problems. The rest ride along on
+            # `also`, so whoever opens the string to fix the blocker sees
+            # everything wrong with it in one pass instead of rediscovering the
+            # layout issue two releases later.
+            for_this_string = []
             for rule in STRING_RULES:
                 new_problem = rule(key, lang, text, langs)
                 old_problem = rule(key, lang, before, base_entry) if existed_before else None
@@ -90,8 +97,14 @@ def _string_findings(baseline: LocFile, candidate: LocFile, index):
                 if finding is not None:
                     finding.line = index.string(key, lang)
                     finding.reference = reference_for(langs)
-                    findings.append(finding)
-                    break  # one finding per string: don't stack overlapping causes
+                    for_this_string.append(finding)
+
+            if not for_this_string:
+                continue
+            for_this_string.sort(key=lambda f: f.severity.value)
+            primary, *rest = for_this_string
+            primary.also = rest
+            findings.append(primary)
 
     return findings, changed
 
