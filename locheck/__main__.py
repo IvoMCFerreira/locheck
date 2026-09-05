@@ -27,7 +27,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.text import Text
 
-from .discover import DiscoveryError, find_baseline_for, find_pair
+from .discover import DiscoveryError, candidates_in, find_baseline_for, find_pair
 from .engine import analyse
 from .loader import LoadError, load
 from .report import render
@@ -77,17 +77,23 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def resolve(files: list[str]) -> tuple[Path, Path, bool]:
-    """Turn 0, 1 or 2 arguments into (live, candidate, was_it_guessed)."""
+def resolve(files: list[str]) -> tuple[Path, Path, int]:
+    """Turn 0, 1 or 2 arguments into (live, candidate, versions_considered).
+
+    `versions_considered` is 0 when both paths were given explicitly, and
+    otherwise how many releases were on disk to choose between - so the report
+    can say "newest two of ten" rather than quietly naming two of them.
+    """
     if len(files) >= 2:
-        return Path(files[0]), Path(files[1]), False
+        return Path(files[0]), Path(files[1]), 0
     if len(files) == 1:
         candidate = Path(files[0])
         if not candidate.exists():
             raise DiscoveryError("no such file: " + str(candidate))
-        return find_baseline_for(candidate), candidate, True
-    live, candidate = find_pair(Path.cwd())
-    return live, candidate, True
+        baseline = find_baseline_for(candidate)
+        return baseline, candidate, len(candidates_in(candidate.parent))
+    found = find_pair(Path.cwd())
+    return found.live, found.candidate, found.considered
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -105,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
     errors = Console(stderr=True)
 
     try:
-        live_path, candidate_path, guessed = resolve(args.files)
+        live_path, candidate_path, considered = resolve(args.files)
     except DiscoveryError as exc:
         errors.print(Text("Could not work out which files to compare.", style="bold red"))
         errors.print(Text(str(exc), style="yellow"))
@@ -135,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
             console=Console(),
             show_all=args.all,
             summary_only=args.summary,
-            auto_detected=guessed,
+            auto_detected=considered,
         )
 
     if report.blockers:

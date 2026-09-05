@@ -233,7 +233,7 @@ def _friendly(path_text: str) -> str:
         return path.name
 
 
-def _header(report: Report, auto_detected: bool = False) -> Panel:
+def _header(report: Report, auto_detected: int = 0) -> Panel:
     grid = Table.grid(padding=(0, 2))
     grid.add_column(style="dim", justify="right")
     grid.add_column()
@@ -249,7 +249,12 @@ def _header(report: Report, auto_detected: bool = False) -> Panel:
         f"version {report.candidate_version}",
     )
     if auto_detected:
-        grid.add_row("", Text("chosen automatically from the file names", style="dim italic"), "")
+        # Say how many were on disk. Naming two files out of ten without
+        # mentioning the other eight invites the reader to assume these were the
+        # only candidates - and their idea of what is live may not be the newest
+        # file sitting in the folder.
+        note = "newest two of " + str(auto_detected) + " versions found here"
+        grid.add_row("", Text(note, style="dim italic"), "")
     return Panel(grid, title="Localisation release check", title_align="left",
                  box=box.ROUNDED, padding=(0, 1))
 
@@ -285,7 +290,7 @@ def render(
     console: Console | None = None,
     show_all: bool = False,
     summary_only: bool = False,
-    auto_detected: bool = False,
+    auto_detected: int = 0,
 ) -> None:
     console = console or Console()
 

@@ -19,6 +19,8 @@ make it work, make it pretty
 
 things are flagged once, so a blocker can have other underlying issues but arent flagged
 
+run it with no arguments and it takes the latest 2
+
 3. WHAT I'D DO WITH MORE TIME/RESOURCES:
 
 3.1. If I could somehow see the size of the components so I could instantly know if a string will overflow.

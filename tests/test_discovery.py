@@ -69,9 +69,10 @@ def test_the_two_newest_are_picked_in_the_right_order(tmp_path):
     for name in ("l_1_0_0.plist", "l_1_2_0.plist", "l_1_2_1.plist"):
         _make(tmp_path, name)
 
-    live, candidate = find_pair(tmp_path)
+    live, candidate, considered = find_pair(tmp_path)
     assert live.name == "l_1_2_0.plist"
     assert candidate.name == "l_1_2_1.plist"
+    assert considered == 3
 
 
 def test_double_digit_versions_are_ordered_correctly(tmp_path):
@@ -79,7 +80,7 @@ def test_double_digit_versions_are_ordered_correctly(tmp_path):
     for name in ("l_1_2_8.plist", "l_1_2_9.plist", "l_1_2_10.plist"):
         _make(tmp_path, name)
 
-    live, candidate = find_pair(tmp_path)
+    live, candidate, _ = find_pair(tmp_path)
     assert live.name == "l_1_2_9.plist"
     assert candidate.name == "l_1_2_10.plist"
 
@@ -144,9 +145,9 @@ def test_two_arguments_are_taken_literally_and_not_reordered(tmp_path, monkeypat
     older = _make(tmp_path, "l_1_2_0.plist")
     newer = _make(tmp_path, "l_1_2_1.plist")
 
-    live, candidate, guessed = resolve([str(newer), str(older)])
+    live, candidate, considered = resolve([str(newer), str(older)])
     assert (live.name, candidate.name) == (newer.name, older.name)
-    assert guessed is False
+    assert considered == 0, "nothing was guessed, so nothing to report"
 
 
 def test_no_arguments_discovers_and_says_so(tmp_path, monkeypatch):
@@ -154,12 +155,72 @@ def test_no_arguments_discovers_and_says_so(tmp_path, monkeypatch):
     _make(tmp_path, "l_1_2_0.plist")
     _make(tmp_path, "l_1_2_1.plist")
 
-    live, candidate, guessed = resolve([])
+    live, candidate, considered = resolve([])
     assert (live.name, candidate.name) == ("l_1_2_0.plist", "l_1_2_1.plist")
-    assert guessed is True, "a guess must be reported to the reader"
+    assert considered == 2, "a guess must be reported to the reader"
 
 
 def test_a_missing_single_argument_fails_clearly(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     with pytest.raises(DiscoveryError, match="no such file"):
         resolve(["not-here.plist"])
+
+
+# --------------------------------------------------------------------------
+# folders holding more than one kind of file
+# --------------------------------------------------------------------------
+
+def test_unrelated_versioned_plists_are_not_treated_as_releases(tmp_path):
+    """The bug this locks: a game config outranked the real candidate.
+
+    Sorting every versioned .plist together by version alone meant a
+    `gameconfig_9_0_0.plist` sitting in the folder was picked as the newest
+    "release", and the tool produced a confident report comparing a localisation
+    file against a config file. Files are grouped by name first now.
+    """
+    _make(tmp_path, "localisations_1_2_0.plist")
+    _make(tmp_path, "localisations_1_2_1.plist")
+    _make(tmp_path, "gameconfig_9_0_0.plist")
+    _make(tmp_path, "Info.plist")
+
+    live, candidate, considered = find_pair(tmp_path)
+    assert live.name == "localisations_1_2_0.plist"
+    assert candidate.name == "localisations_1_2_1.plist"
+    assert considered == 2, "the config file is not one of the versions considered"
+
+
+def test_one_argument_ignores_other_families_too(tmp_path):
+    _make(tmp_path, "localisations_1_2_0.plist")
+    _make(tmp_path, "localisations_1_2_1.plist")
+    _make(tmp_path, "gameconfig_1_2_0.plist")
+
+    found = find_baseline_for(tmp_path / "localisations_1_2_1.plist")
+    assert found.name == "localisations_1_2_0.plist"
+
+
+def test_two_comparable_families_are_refused_rather_than_guessed(tmp_path):
+    """Both could plausibly be what the reader meant, so ask instead of picking."""
+    for name in ("localisations_1_2_0.plist", "localisations_1_2_1.plist",
+                 "gameconfig_1_0_0.plist", "gameconfig_1_1_0.plist"):
+        _make(tmp_path, name)
+
+    with pytest.raises(DiscoveryError, match="several sets"):
+        find_pair(tmp_path)
+
+
+def test_ten_versions_pick_the_newest_two_and_report_the_count(tmp_path):
+    for minor, patch in [(0, 0), (1, 0), (1, 1), (1, 2), (2, 0),
+                         (2, 1), (2, 2), (2, 9), (2, 10), (3, 0)]:
+        _make(tmp_path, f"localisations_1_{minor}_{patch}.plist")
+
+    live, candidate, considered = find_pair(tmp_path)
+    assert live.name == "localisations_1_2_10.plist"
+    assert candidate.name == "localisations_1_3_0.plist"
+    assert considered == 10
+
+
+def test_a_single_version_beside_other_files_explains_itself(tmp_path):
+    _make(tmp_path, "localisations_1_2_0.plist")
+    _make(tmp_path, "Info.plist")
+    with pytest.raises(DiscoveryError, match="only one version"):
+        find_pair(tmp_path)

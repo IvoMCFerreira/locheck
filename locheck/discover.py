@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import NamedTuple
 
 PATTERN = "*.plist"
 
@@ -43,18 +44,56 @@ def version_of(path: Path) -> tuple[int, ...] | None:
     return tuple(int(part) for part in match.groups()) if match else None
 
 
+def family_of(path: Path) -> str:
+    """The file name with its version stripped out.
+
+    `localisations_1_2_0` and `localisations_1_2_1` are the same family;
+    `gameconfig_9_0_0` is not. Without this, a folder holding both a
+    localisation file and any other versioned plist sorts them into one list by
+    version alone - and a `gameconfig_9_0_0.plist` sitting beside
+    `localisations_1_2_1.plist` gets picked as the candidate, producing a
+    confident report comparing two unrelated files.
+    """
+    return _VERSION.sub("", path.stem).strip("_-. ").lower()
+
+
 def candidates_in(directory: Path) -> list[Path]:
     """Versioned plist files in a directory, oldest release first."""
     versioned = [(version_of(p), p) for p in sorted(directory.glob(PATTERN))]
     return [p for version, p in sorted(v for v in versioned if v[0] is not None)]
 
 
-def find_pair(directory: Path) -> tuple[Path, Path]:
-    """Return (live, candidate) - the two newest releases in a directory."""
-    found = candidates_in(directory)
+def families_in(directory: Path) -> dict[str, list[Path]]:
+    """Versioned files grouped by name, each group oldest release first."""
+    grouped: dict[str, list[Path]] = {}
+    for path in candidates_in(directory):
+        grouped.setdefault(family_of(path), []).append(path)
+    return grouped
 
-    if len(found) >= 2:
-        return found[-2], found[-1]
+
+class Selection(NamedTuple):
+    live: Path
+    candidate: Path
+    #: How many releases of this family were on disk, so the report can say so.
+    considered: int
+
+
+def find_pair(directory: Path) -> Selection:
+    """Pick the two newest releases of a single family of files."""
+    families = families_in(directory)
+    comparable = {name: files for name, files in families.items() if len(files) >= 2}
+
+    if len(comparable) == 1:
+        files = next(iter(comparable.values()))
+        return Selection(files[-2], files[-1], len(files))
+
+    if len(comparable) > 1:
+        names = ", ".join(sorted(comparable))
+        raise DiscoveryError(
+            "found several sets of versioned files here (" + names + ") and "
+            "cannot tell which one you mean. Pass the two paths explicitly, "
+            "live one first."
+        )
 
     everything = sorted(directory.glob(PATTERN))
     if not everything:
@@ -66,6 +105,12 @@ def find_pair(directory: Path) -> tuple[Path, Path]:
         raise DiscoveryError(
             "only one .plist file here (" + everything[0].name + "). Two are "
             "needed: the version that is live, and the one about to ship."
+        )
+    if families:
+        only = sorted(families)[0]
+        raise DiscoveryError(
+            "only one version of '" + only + "' here. Two are needed: the "
+            "version that is live, and the one about to ship."
         )
     raise DiscoveryError(
         "found " + str(len(everything)) + " .plist files but could not read "
@@ -84,10 +129,13 @@ def find_baseline_for(candidate: Path) -> Path:
             "one first."
         )
 
+    family = family_of(candidate)
     earlier = [
         path
         for path in candidates_in(candidate.parent)
-        if (found := version_of(path)) is not None and found < target
+        if family_of(path) == family
+        and (found := version_of(path)) is not None
+        and found < target
     ]
     if not earlier:
         raise DiscoveryError(
