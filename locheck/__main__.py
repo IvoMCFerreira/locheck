@@ -126,11 +126,8 @@ def _interactive(report, args, considered: int) -> None:
     console.print()
     console.print(
         Text("  Press ", style="dim")
-        + Text(".", style="bold cyan")
-        + Text(" (or any key) to see what each finding is and how to fix it,", style="dim")
-    )
-    console.print(
-        Text("  or ", style="dim")
+        + Text("any key", style="bold cyan")
+        + Text(" to see what each finding is and how to fix it, or ", style="dim")
         + Text("Esc", style="bold")
         + Text(" to close.", style="dim")
     )
