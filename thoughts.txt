@@ -24,3 +24,4 @@ AI USAGE:
 help choose tool (i prefer cli)
 install dependencies
 build layout/appearance
+ai did not do a great job at making this human friendly

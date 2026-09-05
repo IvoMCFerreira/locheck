@@ -34,12 +34,17 @@ class Problem:
 
     A Problem is deliberately release-agnostic. It says "this string is bad",
     never "this release made it bad" - that judgement belongs to the engine.
+
+    `action` is the imperative a releaser can act on without reading the code,
+    and `spans` are character ranges in the offending string worth highlighting.
     """
 
     code: str
     title: str
     detail: str
     severity: Severity
+    action: str = ""
+    spans: tuple[tuple[int, int], ...] = ()
 
 
 @dataclass
@@ -54,6 +59,24 @@ class Finding:
     lang: str | None = None
     before: str | None = None
     after: str | None = None
+    #: Where to go and fix it.
+    line: int | None = None
+    #: What to do about it, in the imperative.
+    action: str = ""
+    #: The en-US string, so the reader can see what the translation should mirror.
+    reference: str | None = None
+    #: Character ranges in `after` (or `before`, for fixes) worth highlighting.
+    spans: tuple[tuple[int, int], ...] = ()
+
+    @property
+    def location(self) -> str:
+        """`2b827952 / ru`, the short human handle for this finding."""
+        parts = []
+        if self.key:
+            parts.append(self.key)
+        if self.lang:
+            parts.append(self.lang)
+        return " / ".join(parts) if parts else "file"
 
     def as_dict(self) -> dict:
         return {
@@ -63,6 +86,9 @@ class Finding:
             "detail": self.detail,
             "key": self.key,
             "lang": self.lang,
+            "line": self.line,
+            "action": self.action,
+            "reference": self.reference,
             "before": self.before,
             "after": self.after,
         }

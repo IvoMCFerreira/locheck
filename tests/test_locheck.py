@@ -152,6 +152,42 @@ def test_most_changed_strings_are_not_flagged():
 
 
 # --------------------------------------------------------------------------
+# line numbers - the difference between "something is wrong" and "go fix line 22"
+# --------------------------------------------------------------------------
+
+def test_line_index_points_at_the_real_source_line():
+    from locheck import locate
+
+    index = locate.build(CANDIDATE)
+    source = CANDIDATE.read_text(encoding="utf-8").splitlines()
+    key = "2b827952-8d1a-4c31-9283-8753d1fc51be"
+
+    line = index.string(key, "ru")
+    assert "До начала %..." in source[line - 1]
+
+    assert index.of("version") is not None
+    assert "1.2.0" in source[index.of("version") - 1]
+
+
+def test_line_index_degrades_quietly_on_unparseable_input():
+    from locheck import locate
+
+    assert not locate.build(ROOT / "tests" / "fixtures" / "garbage.txt")
+
+
+def test_every_actionable_finding_tells_the_reader_what_to_do():
+    """A finding without an action is a finding the releaser cannot act on."""
+    report = analyse(load(LIVE), load(CANDIDATE))
+    assert all(f.action for f in report.findings)
+
+
+def test_blockers_in_a_string_carry_a_line_number():
+    report = analyse(load(LIVE), load(CANDIDATE))
+    located = [f for f in report.blockers if f.key and f.lang]
+    assert located and all(f.line for f in located)
+
+
+# --------------------------------------------------------------------------
 # hostile input
 # --------------------------------------------------------------------------
 

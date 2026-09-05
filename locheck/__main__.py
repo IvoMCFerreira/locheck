@@ -39,6 +39,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="emit machine-readable JSON instead of the report (for CI)",
     )
     parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="show only the summary table, without the per-finding detail cards",
+    )
+    parser.add_argument(
         "--strict",
         action="store_true",
         help="exit non-zero on any flagged finding, not just blockers",
@@ -70,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         print(json.dumps(report.as_dict(), indent=2, ensure_ascii=False))
     else:
-        render(report, show_all=args.all)
+        render(report, show_all=args.all, summary_only=args.summary)
 
     if report.blockers:
         return 1

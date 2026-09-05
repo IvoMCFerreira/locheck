@@ -9,21 +9,17 @@ different things to a releaser depending on what the live version looked like:
 
 A tool that only diffs cannot tell those apart, so it shouts at all three. That
 is the failure mode the brief warns about, and this function is the answer to it.
+
+Findings carry the full untruncated strings. Deciding how much of one to show is
+the report's job, not this module's.
 """
 
 from __future__ import annotations
 
+from . import locate
 from .loader import LocFile, version_from_filename
 from .model import Finding, Report, Severity
 from .rules import REFERENCE_LANG, STRING_RULES
-
-
-def _snippet(text: str | None, width: int = 46) -> str | None:
-    """One-line preview of a string, with the literal \\n escapes made readable."""
-    if text is None:
-        return None
-    flat = text.replace("\\n", " / ").strip()
-    return flat if len(flat) <= width else flat[: width - 1] + "…"
 
 
 def _classify(old_problem, new_problem, existed_before, key, lang, before, after):
@@ -38,8 +34,10 @@ def _classify(old_problem, new_problem, existed_before, key, lang, before, after
             detail="was broken in the live version (" + old_problem.detail + "), now correct",
             key=key,
             lang=lang,
-            before=_snippet(before),
-            after=_snippet(after),
+            before=before,
+            after=after,
+            action="Nothing to do. Flagged so a placeholder change here is not mistaken for a break.",
+            spans=old_problem.spans,
         )
 
     if old_problem is not None and old_problem.code == new_problem.code:
@@ -50,8 +48,10 @@ def _classify(old_problem, new_problem, existed_before, key, lang, before, after
             detail=new_problem.detail + " - already live, not caused by this release",
             key=key,
             lang=lang,
-            before=_snippet(before),
-            after=_snippet(after),
+            before=before,
+            after=after,
+            action="Worth a ticket, but it does not block this release. " + new_problem.action,
+            spans=new_problem.spans,
         )
 
     origin = "introduced by this release" if existed_before else "new content"
@@ -62,12 +62,14 @@ def _classify(old_problem, new_problem, existed_before, key, lang, before, after
         detail=new_problem.detail + " (" + origin + ")",
         key=key,
         lang=lang,
-        before=_snippet(before),
-        after=_snippet(after),
+        before=before,
+        after=after,
+        action=new_problem.action,
+        spans=new_problem.spans,
     )
 
 
-def _string_findings(baseline: LocFile, candidate: LocFile):
+def _string_findings(baseline: LocFile, candidate: LocFile, index):
     findings = []
     changed = 0
 
@@ -86,21 +88,25 @@ def _string_findings(baseline: LocFile, candidate: LocFile):
                     old_problem, new_problem, existed_before, key, lang, before, text
                 )
                 if finding is not None:
+                    finding.line = index.string(key, lang)
+                    finding.reference = langs.get(REFERENCE_LANG)
                     findings.append(finding)
                     break  # one finding per string: don't stack overlapping causes
 
     return findings, changed
 
 
-def _file_findings(baseline: LocFile, candidate: LocFile):
+def _file_findings(baseline: LocFile, candidate: LocFile, index):
     findings = []
 
     # --- version -----------------------------------------------------------
     expected = version_from_filename(candidate.path)
     if candidate.version and candidate.version == baseline.version:
         detail = "candidate declares the same version as the live file"
+        action = "Bump the version string before shipping."
         if expected and expected != candidate.version:
             detail += ", but the filename says " + expected
+            action = "Set the version string to " + expected + " to match the filename."
         findings.append(
             Finding(
                 severity=Severity.HIGH,
@@ -109,6 +115,8 @@ def _file_findings(baseline: LocFile, candidate: LocFile):
                 detail=detail + " - clients and CDN caches may never pick this up",
                 before=baseline.version,
                 after=candidate.version,
+                line=index.of("version"),
+                action=action,
             )
         )
 
@@ -117,7 +125,7 @@ def _file_findings(baseline: LocFile, candidate: LocFile):
     # entry is one decision by one person, and should read as one line.
     dropped_everywhere = baseline.languages - candidate.languages
     for lang in sorted(dropped_everywhere):
-        affected = sum(1 for entry in baseline.entries.values() if lang in entry)
+        affected = sorted(k for k, e in baseline.entries.items() if lang in e)
         findings.append(
             Finding(
                 severity=Severity.BLOCKER,
@@ -126,8 +134,12 @@ def _file_findings(baseline: LocFile, candidate: LocFile):
                 detail=(
                     "was in {n} of {total} live entries and is now in none"
                     " - every {lang} player loses all of this text"
-                ).format(n=affected, total=len(baseline.entries), lang=lang),
+                ).format(n=len(affected), total=len(baseline.entries), lang=lang),
                 lang=lang,
+                action=(
+                    "Confirm this was intended. If not, restore " + lang + " in: "
+                    + ", ".join(k[:8] for k in affected)
+                ),
             )
         )
 
@@ -146,7 +158,12 @@ def _file_findings(baseline: LocFile, candidate: LocFile):
                     detail="translated here in the live version, absent in the candidate",
                     key=key,
                     lang=lang,
-                    before=_snippet(base_entry[lang]),
+                    before=base_entry[lang],
+                    line=index.entry(key),
+                    action=(
+                        "Restore the " + lang + " string, or confirm this key is meant "
+                        "to fall back to " + REFERENCE_LANG + " for " + lang + " players."
+                    ),
                 )
             )
 
@@ -157,12 +174,13 @@ def _file_findings(baseline: LocFile, candidate: LocFile):
                 severity=Severity.HIGH,
                 code="key.removed",
                 title="Text ID removed",
-                detail=(
-                    "was live and is gone - confirm no shipped client still requests it, "
-                    "or those players see a blank"
-                ),
+                detail="was live and is gone - any client still requesting it shows a blank",
                 key=key,
-                before=_snippet(baseline.entries[key].get(REFERENCE_LANG)),
+                before=baseline.entries[key].get(REFERENCE_LANG),
+                action=(
+                    "Confirm no shipped client build still requests this ID. Old app "
+                    "versions outlive content updates."
+                ),
             )
         )
 
@@ -179,6 +197,8 @@ def _file_findings(baseline: LocFile, candidate: LocFile):
                         "the other languages cannot be verified"
                     ),
                     key=key,
+                    line=index.entry(key),
+                    action="Add the " + REFERENCE_LANG + " source string for this entry.",
                 )
             )
 
@@ -186,8 +206,10 @@ def _file_findings(baseline: LocFile, candidate: LocFile):
 
 
 def analyse(baseline: LocFile, candidate: LocFile) -> Report:
-    findings, changed = _string_findings(baseline, candidate)
-    findings += _file_findings(baseline, candidate)
+    index = locate.build(candidate.path)
+
+    findings, changed = _string_findings(baseline, candidate, index)
+    findings += _file_findings(baseline, candidate, index)
     findings.sort(key=lambda f: (f.severity.value, f.key or "", f.lang or ""))
 
     return Report(
