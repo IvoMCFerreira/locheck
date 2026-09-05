@@ -27,32 +27,51 @@ tn to tr ts tt tw ty ug uk ur uz ve vi vo wa wo xh yi yo za zh zu
 """.split())
 
 #: Country codes routinely mistaken for the language spoken there.
+#:
+#: Every entry here is a string that is NOT a language code, so naming it is
+#: unambiguously helpful. The tempting additions are the ones left out:
+#:
+#:   kr  Korea, but also Kanuri
+#:   se  Sweden, but also Northern Sami
+#:   uk  United Kingdom, but also - and officially - Ukrainian
+#:
+#: Those three are real ISO 639-1 codes, so flagging them would report a correct
+#: file as broken. The check gives them up rather than risk that, which is the
+#: same call made for `tk` (Turkmen) in the sample data: valid code, suspicious
+#: content, not something a list of names can settle.
 COMMON_MISTAKES = {
-    "jp": "ja",  # Japan  -> Japanese
-    "cn": "zh",  # China  -> Chinese
-    "kr": "ko",  # Korea  -> Korean
-    "gr": "el",  # Greece -> Greek
-    "cz": "cs",  # Czechia-> Czech
-    "dk": "da",  # Denmark-> Danish
-    "se": "sv",  # Sweden -> Swedish
-    "ua": "uk",  # Ukraine-> Ukrainian
-    "uk": "en",  # United Kingdom is not a language code; English is `en`
-    "vn": "vi",  # Vietnam-> Vietnamese
-    "ir": "fa",  # Iran   -> Persian
-    "rs": "sr",  # Serbia -> Serbian
+    "jp": "ja",  # Japan    -> Japanese
+    "cn": "zh",  # China    -> Chinese
+    "gr": "el",  # Greece   -> Greek
+    "cz": "cs",  # Czechia  -> Czech
+    "dk": "da",  # Denmark  -> Danish
+    "ua": "uk",  # Ukraine  -> Ukrainian
+    "vn": "vi",  # Vietnam  -> Vietnamese
+    "ir": "fa",  # Iran     -> Persian
+    "rs": "sr",  # Serbia   -> Serbian
 }
 
 
 def problem_with(code: str) -> tuple[str, str] | None:
     """Return (reason, suggested action) for a bad code, or None if it is fine.
 
-    Region subtags are accepted: `pt-BR` and `en-US` are normal, well-formed
-    BCP 47 tags. Only the language part is validated.
+    Region subtags are accepted: `pt-BR`, `en-US` and `zh-Hans-CN` are normal,
+    well-formed BCP 47 tags. Only the primary language subtag is validated.
+
+    Only *two-letter* primary subtags are judged. That is where the mistake this
+    check exists for lives - `jp` for Japanese, `cn` for Chinese, `kr` for
+    Korean - because two-letter country codes and two-letter language codes look
+    identical and are constantly confused. Three-letter subtags are left alone:
+    `fil` for Filipino and `haw` for Hawaiian are legitimate ISO 639-2 codes with
+    no two-letter equivalent, and flagging them would be a false alarm on a
+    correct file. `x-` private-use tags are left alone for the same reason.
     """
-    if not code:
+    if not code or not code.strip():
         return ("empty language code", "Remove the empty key or give it a real code.")
 
-    primary = code.split("-")[0].split("_")[0].lower()
+    # Sloppy hand-editing leaves whitespace around keys. A padded "  fr  " is
+    # French with a typo in the file, not an unknown language.
+    primary = code.strip().replace("_", "-").split("-")[0].lower()
 
     if primary in ISO_639_1:
         return None
@@ -61,11 +80,20 @@ def problem_with(code: str) -> tuple[str, str] | None:
         correct = COMMON_MISTAKES[primary]
         return (
             "'" + primary + "' is a country code, not a language code",
-            "Rename '" + code + "' to '" + correct + "'. Clients ask for '"
+            "Rename '" + code.strip() + "' to '" + correct + "'. Clients ask for '"
             + correct + "', so nothing currently reaches these players.",
         )
 
-    return (
-        "'" + primary + "' is not an ISO 639-1 language code",
-        "Check what the client actually requests for this language and rename the key.",
-    )
+    if len(primary) == 2 and primary.isalpha():
+        return (
+            "'" + primary + "' is not an ISO 639-1 language code",
+            "Check what the client actually requests for this language and rename the key.",
+        )
+
+    if not any(character.isalpha() for character in primary):
+        return (
+            "'" + code.strip() + "' is not a language code at all",
+            "Replace this key with the language code the client asks for.",
+        )
+
+    return None
