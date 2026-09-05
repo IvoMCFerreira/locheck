@@ -113,9 +113,10 @@ def _interactive(report, args, considered: int) -> None:
     decided to fix something needs the cards. Printing both every time buries
     the first in the second, so this shows the summary and waits.
 
-    Anything other than the two documented keys expands rather than quits: the
-    cost of an unexpected key showing too much is a scroll, and the cost of it
-    quitting is that the reader loses the report they were about to read.
+    Esc is the only key that closes. Everything else expands, including keys a
+    pager would treat as quit - the cost of an unexpected key showing too much
+    is a scroll, and the cost of it closing is that the reader loses the report
+    they were about to read.
     """
     console = Console()
     count = render_summary(report, console, args.all, considered)
@@ -126,9 +127,12 @@ def _interactive(report, args, considered: int) -> None:
     console.print(
         Text("  Press ", style="dim")
         + Text(".", style="bold cyan")
-        + Text(" to see what each finding is and how to fix it, or ", style="dim")
+        + Text(" (or any key) to see what each finding is and how to fix it,", style="dim")
+    )
+    console.print(
+        Text("  or ", style="dim")
         + Text("Esc", style="bold")
-        + Text(" to finish.", style="dim")
+        + Text(" to close.", style="dim")
     )
 
     try:
@@ -137,7 +141,7 @@ def _interactive(report, args, considered: int) -> None:
         console.print()
         return
 
-    if key in ("\x1b", "q", "Q"):
+    if key == "\x1b":  # Esc, and only Esc
         return
 
     console.print()

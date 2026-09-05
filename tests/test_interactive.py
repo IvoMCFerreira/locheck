@@ -71,14 +71,13 @@ def test_expanding_shows_strictly_more_than_the_summary():
     assert len(_run_interactive(".")) > len(_run_interactive("\x1b"))
 
 
-def test_q_also_quits():
-    """Muscle memory from every pager. Cheap to support, confusing to omit."""
-    assert A_DETAIL_CARD not in _run_interactive("q")
+@pytest.mark.parametrize("key", [".", "\r", "\n", " ", "x", "q", "Q", ""])
+def test_every_key_except_escape_expands(key):
+    """Esc is the only way out - `q` included, despite the pager habit.
 
-
-@pytest.mark.parametrize("key", ["\r", "\n", " ", "x", ""])
-def test_an_unexpected_key_expands_rather_than_quitting(key):
-    """Erring towards showing too much: a stray key costs a scroll, not the report."""
+    Erring towards showing too much: a stray key costs a scroll, whereas closing
+    costs the reader the report they were about to read.
+    """
     assert A_DETAIL_CARD in _run_interactive(key)
 
 

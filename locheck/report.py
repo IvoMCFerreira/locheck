@@ -141,7 +141,10 @@ def _card(finding: Finding, number: int, candidate_path: str) -> Panel:
     where.add_column(style="dim", justify="right", width=8)
     where.add_column(overflow="fold")
 
-    location = candidate_path + (f":{finding.line}" if finding.line else "")
+    # Shortened the same way as the header: auto-discovery hands back an
+    # absolute path, and a full Windows path pushes the line number - the
+    # part the reader is here for - off the edge of the card.
+    location = _friendly(candidate_path) + (f":{finding.line}" if finding.line else "")
     where.add_row("file", Text(location, style="bold cyan"))
     if finding.key:
         where.add_row("text id", Text(finding.key, style="dim"))
@@ -324,9 +327,19 @@ def render_summary(
 
 
 def render_details(report: Report, console: Console, show_all: bool = False) -> None:
-    """A card per finding: where it is, what it should say, and what to do."""
+    """A card per finding: where it is, what it should say, and what to do.
+
+    Ordered *least* severe first, which is the opposite of the summary table
+    above it. That is deliberate. The table is for scanning, so it leads with
+    the worst. The cards are read after deciding to act, and a terminal leaves
+    you at the bottom of what it printed - so the blockers go last, where the
+    cursor already is, instead of scrolled off the top.
+
+    The verdict is restated underneath them, so the final line on screen is the
+    ship/no-ship call rather than the last card that happened to print.
+    """
     visible, _, numbers = _shown(report, show_all)
-    for severity in Severity:
+    for severity in reversed(list(Severity)):
         group = [f for f in visible if f.severity is severity]
         if not group:
             continue
@@ -341,6 +354,10 @@ def render_details(report: Report, console: Console, show_all: bool = False) -> 
             console.print()
             console.print(_card(finding, numbers[id(finding)], report.candidate_path))
 
+    if visible:
+        console.print()
+        console.print(_verdict(report))
+
 
 def render(
     report: Report,
@@ -351,10 +368,6 @@ def render(
 ) -> None:
     """The whole report at once, for anything that is not a live terminal."""
     console = console or Console()
-    render_summary(report, console, show_all, auto_detected, with_footer=False)
+    render_summary(report, console, show_all, auto_detected, with_footer=True)
     if not summary_only:
         render_details(report, console, show_all)
-
-    _, hidden, _ = _shown(report, show_all)
-    console.print()
-    console.print(_footer(report, hidden))
