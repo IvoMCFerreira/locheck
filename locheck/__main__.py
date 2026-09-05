@@ -29,12 +29,14 @@ import sys
 from pathlib import Path
 
 from rich.console import Console
+from rich.table import Table
 from rich.text import Text
 
 from .discover import DiscoveryError, candidates_in, find_baseline_for, find_pair
 from .engine import analyse
 from .loader import LoadError, load
 from .interactive import read_key, someone_is_watching
+from .picker import choose, versions_like
 from .report import render, render_details, render_summary
 
 
@@ -106,43 +108,84 @@ def resolve(files: list[str]) -> tuple[Path, Path, int]:
     return found.live, found.candidate, found.considered
 
 
-def _interactive(report, args, considered: int) -> None:
-    """Show the verdict, then the detail only if it is asked for.
+def _legend(console: Console, *, expandable: bool) -> None:
+    """A key legend rather than a sentence.
+
+    Prose that says "press any key, or V, or Esc" contradicts itself. A legend
+    lists what each key does and lets the reader see the exceptions at a glance.
+    """
+    row = Table.grid(padding=(0, 2))
+    for _ in range(3):
+        row.add_column()
+
+    def option(key: str, what: str) -> Text:
+        return Text(" " + key + " ", style="reverse") + Text(" " + what, style="dim")
+
+    cells = [option("Esc", "close"), option("V", "compare other versions")]
+    if expandable:
+        cells.append(option("any other key", "show the detail"))
+    row.add_row(*cells)
+
+    console.print()
+    console.print(row)
+
+
+def _interactive(live_path, candidate_path, considered: int, args):
+    """Show the verdict, then the detail or a different pair, on request.
 
     A releaser deciding whether to ship needs the table. A releaser who has
     decided to fix something needs the cards. Printing both every time buries
     the first in the second, so this shows the summary and waits.
 
-    Esc is the only key that closes. Everything else expands, including keys a
-    pager would treat as quit - the cost of an unexpected key showing too much
-    is a scroll, and the cost of it closing is that the reader loses the report
-    they were about to read.
+    It loops, because the automatic pick can be wrong in a way only the person
+    running it knows about - a version that was built but never shipped means
+    the second-newest file is not what is live. Rather than making them retype
+    paths, V lists what is on disk and lets them correct it.
+
+    Returns the report that was last on screen, so the exit code describes what
+    the reader actually saw.
     """
     console = Console()
-    count = render_summary(report, console, args.all, considered)
-    if not count:
-        return
+    report = analyse(load(live_path), load(candidate_path))
+    showing_detail = False
+    count = 0
 
-    console.print()
-    console.print(
-        Text("  Press ", style="dim")
-        + Text("any key", style="bold cyan")
-        + Text(" to see what each finding is and how to fix it, or ", style="dim")
-        + Text("Esc", style="bold")
-        + Text(" to close.", style="dim")
-    )
+    while True:
+        if showing_detail:
+            render_details(report, console, args.all)
+        else:
+            count = render_summary(report, console, args.all, considered)
 
-    try:
-        key = read_key()
-    except KeyboardInterrupt:
+        _legend(console, expandable=not showing_detail and bool(count))
+
+        try:
+            key = read_key()
+        except KeyboardInterrupt:
+            console.print()
+            return report
+
+        if key == "\x1b":  # Esc, and only Esc
+            return report
+
+        if key in ("v", "V"):
+            chosen = choose(live_path, candidate_path, console)
+            console.print()
+            if chosen is not None:
+                live_path, candidate_path = chosen
+                try:
+                    report = analyse(load(live_path), load(candidate_path))
+                except LoadError as exc:
+                    console.print(Text("  " + str(exc), style="bold red"))
+                    return report
+                considered = len(versions_like(candidate_path))
+            showing_detail = False  # a new pair starts from its verdict
+            continue
+
+        if showing_detail or not count:
+            return report
+
+        showing_detail = True
         console.print()
-        return
-
-    if key == "\x1b":  # Esc, and only Esc
-        return
-
-    console.print()
-    render_details(report, console, args.all)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -181,7 +224,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         print(json.dumps(report.as_dict(), indent=2, ensure_ascii=False))
     elif not args.summary and not args.details and someone_is_watching():
-        _interactive(report, args, considered)
+        # The reader can switch to a different pair from inside, so the exit
+        # code has to describe the comparison they ended on, not the first one.
+        report = _interactive(live_path, candidate_path, considered, args)
     else:
         # `guessed` is surfaced inside the header rather than on a line of its
         # own: a silently mis-picked pair produces a report that looks entirely

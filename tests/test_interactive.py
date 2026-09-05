@@ -145,3 +145,91 @@ def test_summary_flag_stops_at_the_table():
     result = _run_subprocess("localisations_1_2_0.plist", "localisations_1_2_1.plist", "--summary")
     assert "SEVERITY" in result.stdout
     assert A_DETAIL_CARD not in result.stdout
+
+
+# --------------------------------------------------------------------------
+# choosing a different pair of versions
+# --------------------------------------------------------------------------
+
+def _folder_of_versions(tmp_path: Path) -> Path:
+    """1.0.0 is the old file; 1.2.0 and 1.2.1 are both the candidate content.
+
+    So comparing 1.2.0 against 1.2.1 finds almost nothing, and comparing 1.0.0
+    against 1.2.1 finds the real regressions. That difference is what proves a
+    re-pick actually re-analyses rather than reprinting.
+    """
+    import shutil
+
+    shutil.copy(ROOT / "localisations_1_2_0.plist", tmp_path / "localisations_1_0_0.plist")
+    shutil.copy(ROOT / "localisations_1_2_1.plist", tmp_path / "localisations_1_2_0.plist")
+    shutil.copy(ROOT / "localisations_1_2_1.plist", tmp_path / "localisations_1_2_1.plist")
+    return tmp_path
+
+
+def _drive(tmp_path, keys, typed=()):
+    """Run interactively in a folder of versions, feeding keys and typed lines."""
+    buffer = io.StringIO()
+    key_stream, typed_stream = iter(keys), iter(typed)
+
+    def console(*args, **kwargs):
+        if kwargs.get("stderr"):
+            return Console(stderr=True)
+        return Console(width=92, file=buffer)
+
+    cwd = Path.cwd()
+    try:
+        import os
+        os.chdir(_folder_of_versions(tmp_path))
+        with mock.patch.object(cli, "someone_is_watching", return_value=True), \
+             mock.patch.object(cli, "read_key", lambda: next(key_stream)), \
+             mock.patch.object(cli, "Console", console), \
+             mock.patch("locheck.picker.Console", console), \
+             mock.patch("builtins.input", lambda _="": next(typed_stream)):
+            code = cli.main([])
+    finally:
+        import os
+        os.chdir(cwd)
+    return buffer.getvalue(), code
+
+
+def test_v_lists_every_version_and_marks_the_current_pair(tmp_path):
+    output, _ = _drive(tmp_path, keys=["v", "\x1b"], typed=[""])
+    assert "Versions in this folder" in output
+    for version in ("1.0.0", "1.2.0", "1.2.1"):
+        assert version in output
+    assert "currently the live side" in output
+    assert "currently the candidate" in output
+
+
+def test_choosing_a_different_pair_re_runs_the_check(tmp_path):
+    """The proof it re-analyses: the verdict changes because the inputs changed."""
+    output, code = _drive(tmp_path, keys=["v", "\x1b"], typed=["1 3"])
+    verdicts = [line for line in output.splitlines() if "SHIP" in line]
+    assert "DO NOT SHIP" not in verdicts[0], "1.2.0 vs 1.2.1 are near-identical here"
+    assert "DO NOT SHIP" in verdicts[-1], "1.0.0 vs 1.2.1 holds the real regressions"
+    assert code == 1, "the exit code follows the comparison last shown"
+
+
+def test_pressing_enter_at_the_picker_keeps_the_current_pair(tmp_path):
+    output, code = _drive(tmp_path, keys=["v", "\x1b"], typed=[""])
+    verdicts = [line for line in output.splitlines() if "SHIP" in line]
+    assert "DO NOT SHIP" not in verdicts[-1]
+    assert code == 0
+
+
+def test_nonsense_at_the_picker_is_re_prompted_then_abandoned(tmp_path):
+    """Three bad answers give up rather than looping forever."""
+    output, _ = _drive(tmp_path, keys=["v", "\x1b"], typed=["banana", "9 9", "1"])
+    assert "Two numbers between 1 and" in output
+
+
+def test_the_same_version_twice_is_rejected(tmp_path):
+    """Comparing a file against itself tells the reader nothing."""
+    from locheck.picker import _parse
+
+    assert _parse("2 2", 4) is None
+    assert _parse("1 4", 4) == (1, 4)
+    assert _parse("1,4", 4) == (1, 4)
+    assert _parse("0 4", 4) is None
+    assert _parse("1 5", 4) is None
+    assert _parse("just one", 4) is None
