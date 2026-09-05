@@ -1,0 +1,26 @@
+1. THOUGHT PROCESS BEFORE STARTING:
+
+1.1. Read the text.
+1.2. Asked Claude to explain it to me again so I know I understood it.
+1.3. Clear limitations of the tool as of right now:
+    - Strings might not fit UI components and might require rethinking by a human.
+    - The tool can't be too simple otherwise it would already be implemented and this wouldn't be an issue.
+1.4. Prioritize major issues like missing strings or hardcoded text "%@", perhaps when showing what changed, flag these in red.
+1.5. Do NOT oveflag issues, if anything I'd rather the tool showed me the most egregious problems.
+1.6. I'm thinking CLI for now.  
+
+2. DEVELOPMENT PHASE:
+
+3. WHAT I'D DO WITH MORE TIME/RESOURCES:
+
+3.1. If I could somehow see the size of the components so I could instantly know if a string will overflow.
+
+
+
+#####
+
+AI USAGE:
+
+help choose tool (i prefer cli)
+install dependencies
+build layout/appearance

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Deliberately malformed candidate. Every entry here exercises a different
+     way the real pipeline has been seen to produce junk. The tool must survive
+     all of it and still produce a usable report. -->
+<plist version="1.0">
+<dict>
+	<key>version</key>
+	<integer>3</integer>
+	<key>localisations</key>
+	<dict>
+		<key>not-a-dict-entry</key>
+		<string>someone pasted a string where a language map belongs</string>
+		<key>empty-entry</key>
+		<dict/>
+		<key>no-reference-language</key>
+		<dict>
+			<key>fr</key>
+			<string>Pas de version anglaise ici, %@ ne peut pas etre verifie</string>
+			<key>de</key>
+			<string>Kein Englisch hier</string>
+		</dict>
+		<key>wrong-placeholder-type</key>
+		<dict>
+			<key>en-US</key>
+			<string>You won %u coins</string>
+			<key>fr</key>
+			<string>Tu as gagne %@ jetons</string>
+			<key>de</key>
+			<string>Du hast %u %u Muenzen gewonnen</string>
+		</dict>
+		<key>non-string-value</key>
+		<dict>
+			<key>en-US</key>
+			<string>Level %u</string>
+			<key>fr</key>
+			<integer>42</integer>
+		</dict>
+		<key>token-chaos</key>
+		<dict>
+			<key>en-US</key>
+			<string>Rank 1 A:[at home/worldwide] B:[today/ever]</string>
+			<key>fr</key>
+			<string>Rang 1 A:[chez soi/mondial B:[aujourd hui/toujours]</string>
+			<key>de</key>
+			<string>Rang 1 B:[heute/immer]</string>
+		</dict>
+	</dict>
+</dict>
+</plist>
