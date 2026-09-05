@@ -22,6 +22,7 @@ Design rules:
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from rich import box
 from rich.console import Console, Group
@@ -218,12 +219,37 @@ def _verdict(report: Report) -> Panel:
     return Panel(Text(headline, style=style, justify="center"), box=box.HEAVY, style=style)
 
 
-def _header(report: Report) -> Panel:
+def _friendly(path_text: str) -> str:
+    """Show a path the way the reader typed it, not the way the OS stores it.
+
+    Auto-discovery hands back absolute paths, and a full Windows path wraps the
+    header onto three lines for no benefit - the reader is standing in that
+    directory.
+    """
+    path = Path(path_text)
+    try:
+        return str(path.relative_to(Path.cwd()))
+    except ValueError:
+        return path.name
+
+
+def _header(report: Report, auto_detected: bool = False) -> Panel:
     grid = Table.grid(padding=(0, 2))
     grid.add_column(style="dim", justify="right")
     grid.add_column()
-    grid.add_row("live", f"{report.baseline_path}   version {report.baseline_version}")
-    grid.add_row("candidate", f"{report.candidate_path}   version {report.candidate_version}")
+    grid.add_column(style="dim")
+    grid.add_row(
+        "live",
+        Text(_friendly(report.baseline_path), style="bold"),
+        f"version {report.baseline_version}",
+    )
+    grid.add_row(
+        "candidate",
+        Text(_friendly(report.candidate_path), style="bold"),
+        f"version {report.candidate_version}",
+    )
+    if auto_detected:
+        grid.add_row("", Text("chosen automatically from the file names", style="dim italic"), "")
     return Panel(grid, title="Localisation release check", title_align="left",
                  box=box.ROUNDED, padding=(0, 1))
 
@@ -259,10 +285,11 @@ def render(
     console: Console | None = None,
     show_all: bool = False,
     summary_only: bool = False,
+    auto_detected: bool = False,
 ) -> None:
     console = console or Console()
 
-    console.print(_header(report))
+    console.print(_header(report, auto_detected))
     console.print(_verdict(report))
 
     if report.warnings:

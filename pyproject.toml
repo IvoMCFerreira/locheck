@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "locheck"
+version = "0.1.0"
+description = "Check a localisation plist against the version that is live, and say whether it is safe to ship."
+requires-python = ">=3.9"
+dependencies = ["rich>=13.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+# Installing gives a plain `locheck` command, so nobody has to know this is
+# Python or remember `python -m`.
+[project.scripts]
+locheck = "locheck.__main__:main"
+
+[tool.setuptools]
+packages = ["locheck"]
