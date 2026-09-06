@@ -1,85 +1,119 @@
+<div align="center">
+
 # locheck
 
-Checks a candidate localisation plist against the version before it and says
-whether it is safe to ship.
+<p><strong>Tells a releaser which localisation changes could actually break the game.</strong></p>
 
-## Running it
+<img src="https://img.shields.io/badge/python-3.9%2B-blue" alt="Python 3.9+">
+<img src="https://img.shields.io/badge/tests-298%20passing-brightgreen" alt="298 tests">
+<img src="https://img.shields.io/badge/checks-20-blue" alt="20 checks">
+<img src="https://img.shields.io/badge/dependencies-1-lightgrey" alt="1 dependency">
 
-**Without a terminal** — put this folder anywhere and **double-click
-`check-localisations.bat`**, or drag one or two `.plist` files onto it. On a
-machine that has never run it, it offers to install what it needs and carries on;
-if there is no Python at all it says where to get one. The window stays open so
-the report can be read.
+<a href="#run-it">Run it</a>
+&nbsp;·&nbsp;
+<a href="#the-idea-it-rests-on">The idea</a>
+&nbsp;·&nbsp;
+<a href="#commands">Commands</a>
+&nbsp;·&nbsp;
+<a href="#in-ci">CI</a>
+&nbsp;·&nbsp;
+<a href="#what-it-does-not-catch">Blind spots</a>
 
-**With a terminal:**
+</div>
+
+```
+┌─ Localisation release check   newest two of 2 versions found here ──────────────────────┐
+│ older  localisations_1_2_0.plist  version 1.2.0                                         │
+│ newer  localisations_1_2_1.plist  version 1.2.0  expected 1.2.1                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                       DO NOT SHIP  ·  4 blockers  ·  3 to confirm                       │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+
+    #   SEVERITY    LINE   TEXT ID      LANG    ISSUE
+ ─────────────────────────────────────────────────────────────────────────────────────────
+    1   BLOCKER        —   —            es      Language removed from the whole file
+    2   BLOCKER       73   1981dc5a     it      Unclosed substitution token
+    3   BLOCKER       16   2b827952     it      Empty translation
+    4   BLOCKER       22   2b827952     ru      Malformed placeholder
+    5   HIGH           6   —            —       Version not bumped
+    6   HIGH          83   —            jp      Language code is not valid
+    7   HIGH           —   7a794655     —       Text ID removed
+    8   MEDIUM        81   1981dc5a     tk      Wrong number of options in a token
+    9   MEDIUM        58   9bb069bc     pt-BR   Number missing from translation
+   10   MEDIUM        45   d8225439     jp      Line breaks lost
+   11   LOW           83   1981dc5a     jp      Stray space at the edge
+   12   FIXED         14   2b827952     fr      Fixed: malformed placeholder
+
+  localisations_1_2_0.plist (older)  ->  localisations_1_2_1.plist (newer)
+  32 strings compared   4 changed   10 need action   1 fixed
+```
+
+Any key expands that into a card per finding with the file, the line, the English
+source, the offending characters highlighted, and what to do about it.
+
+---
+
+## Why
+
+`diff` already tells you what changed. On a Monday morning with a ship call to
+make, the question is **which of those changes could break the game** — and the
+answer is usually a handful, not the whole list.
+
+On these two files, four strings changed and **two** deserve attention. A tool
+that reported four would be worse than no tool: a releaser who sees one bogus
+blocker learns it cries wolf, and the next real one gets waved through.
+
+<a id="run-it"></a>
+
+## Run it
+
+**No terminal.** Double-click **`check-localisations.bat`**, or drag one or two
+`.plist` files onto it. On a machine that has never run it, it offers to install
+what it needs and carries on; if there is no Python at all it says where to get
+one. The window stays open so the report can be read.
+
+**Terminal.**
 
 ```bash
 pip install -e .
-locheck                          # compares the two newest versions in this folder
-locheck new.plist                # compare against the release it replaces
-locheck old.plist new.plist      # spell both out
+
+locheck                        # compare the two newest versions in this folder
+locheck new.plist              # compare it against the release before it
+locheck old.plist new.plist    # spell both out
 ```
 
-Flags: `--details --all --summary --json --strict`. Exit `0` clean, `1` blockers,
-`2` unreadable. Tests: `pip install -e ".[dev]" && pytest` (295).
+It reads the versions off the file names, so nobody has to remember which order
+they go in. Getting that backwards is the worst failure available here — every
+regression would read as a fix — so the report always states the pair it picked
+and how many it chose between.
 
-The summary appears first; any key expands it into per-finding detail, `V`
-compares a different pair of versions, `Esc` closes. Piped or in CI it prints
-everything at once and never prompts.
+<a id="commands"></a>
 
-**In CI.** The gate is just running it — there is no wrapper and nothing to
-parse:
+## Commands
 
-| exit | meaning |
+| | |
 |---|---|
-| `0` | nothing blocking |
-| `1` | blockers found (or `--strict` and anything flagged) |
-| `2` | files missing or unreadable |
+| `locheck` | the two newest versions in this folder |
+| `locheck new.plist` | that file against the release before it |
+| `locheck old.plist new.plist` | exactly these two, in this order |
+| `--summary` | just the table |
+| `--details` | the whole report at once, no keypress |
+| `--all` | include problems that were already there |
+| `--json` | structured output for CI or a dashboard |
+| `--strict` | fail on anything flagged, not just blockers |
 
-`--json` gives the whole report as structured output for a bot or a dashboard.
-[`.github/workflows/localisation-check.yml`](.github/workflows/localisation-check.yml)
-is a working example: it runs on any PR touching a `.plist`, fails on blockers,
-and attaches the JSON as an artefact even when the check failed — which is
-exactly when someone wants to read it.
+At a terminal: **any key** expands the detail, **`V`** compares a different pair
+of versions, **`Esc`** closes. Piped or in CI it prints everything at once and
+never prompts — a prompt in a build log is a hang, not a feature.
 
-Blockers fail the build; **HIGH findings deliberately do not.** Those mean
-"confirm this was intentional", which is a human call. A gate that refuses them
-teaches people to bypass the gate, and then it catches nothing.
-
-**Docker**, if you would rather not install Python:
-
-```bash
-docker build -t locheck .
-docker run --rm -v "$PWD:/files" locheck            # two newest in this folder
-docker run --rm -v "$PWD:/files" locheck --json
-```
-
-Exit codes pass straight through. The plist files are mounted rather than baked
-in, so the image cannot end up checking its own stale copy.
-
-I could not run Docker on the machine I built this on — it needs virtualisation
-enabled, which was switched off — so rather than document it on trust, the
-workflow builds the image and runs it: it checks the container produces the same
-findings as the host, and that `0` and `1` survive the container boundary. That
-job is the evidence.
-
-**`make`** wraps the common ones: `make` on its own lists them, then `make dev`,
-`make test`, `make run`, `make check`, `make docker`. Override the files with
-`make check OLD=loc_2_0_0.plist NEW=loc_2_1_0.plist`.
-
-## The problem I picked
-
-Not "what changed" — `diff` does that, and the brief calls it the floor. The
-question on Monday morning is **which changes could break the game.** So the job
-is separating *changed* from *dangerous*. My measure: on these files four strings
-changed and only two deserve attention. A tool reporting four would be worse than
-none.
+<a id="the-idea-it-rests-on"></a>
 
 ## The idea it rests on
 
 Rules judge one string in isolation — *is this wrong right now?* — and know
 nothing about the previous release. The engine runs **every rule twice**, against
-the older file and against the newer, and compares:
+the older file and against the newer, then compares:
 
 | older | newer | verdict |
 |---|---|---|
@@ -87,54 +121,93 @@ the older file and against the newer, and compares:
 | broken | broken | **pre-existing** — hidden by default |
 | broken | fine | **fixed** — shown in green |
 
-Pass an older file as the candidate and it detects the **rollback** and rewords
-everything for it — verdict, headings and each finding. A crash that "was fixed"
-shipping forward is one that *comes back* rolling back, and reading the forward
-wording in that direction is how you ship the fire you were putting out.
-
 That is `engine._classify`, and it is the whole difference from a diff. It also
-catches the trap in the data: French went `Commence dans % ...` →
-`Commence dans %u...`. Placeholders changed, so a naive check screams — but the
-old one was broken and the new one matches the source. Reported as **fixed**.
+catches the trap in the sample data: French went `Commence dans % ...` →
+`Commence dans %u...`. The placeholders changed, so a naive check screams — but
+the old one was broken and the new one matches the source. Reported as **fixed**.
 
-A new check is one predicate; the three-way classification comes free.
+Adding a check is one predicate; the three-way classification comes free.
 
-## How I chose the checks
+Pass an older file as the newer one and it detects the **rollback**, then rewords
+the verdict, the headings and every finding for it. A crash that "was fixed"
+shipping forward is one that *comes back* rolling back.
 
-Severity is **what the player experiences**, not how big the edit was: crash or
-blank = BLOCKER; a language vanishes or the release never lands = HIGH; wrong or
-badly wrapped content = MEDIUM.
+<a id="in-ci"></a>
 
-Twenty checks: placeholders (malformed, parity, order), empty strings,
-`A:[a/b]` tokens (unbalanced, missing, wrong option count), languages dropped
-from a key or the whole file, removed or duplicated text IDs, entries with no
-`en-US`, an unbumped version, invalid language codes, translations left stale by
-a reworded source, partial language coverage, missing numbers, lost line breaks,
-length outliers, and stray whitespace at a string's edges.
+## In CI
 
-## What it does **not** catch
+The gate is just running it. No wrapper, nothing to parse.
+
+| exit | meaning |
+|---|---|
+| `0` | nothing blocking |
+| `1` | blockers found, or `--strict` and anything flagged |
+| `2` | files missing or unreadable |
+
+Blockers fail the build. **HIGH findings deliberately do not** — those mean
+"confirm this was intentional", which is a human call, and a gate that refuses
+them teaches people to bypass the gate.
+
+<details>
+<summary><strong>Docker, Make, and the example workflow</strong></summary>
+
+<br>
+
+```bash
+docker build -t locheck .
+docker run --rm -v "$PWD:/files" locheck
+docker run --rm -v "$PWD:/files" locheck --json
+```
+
+Exit codes pass straight through. The plist files are mounted rather than baked
+in, so the image cannot end up checking its own stale copy.
+
+I could not run Docker on the machine I built this on — it needs virtualisation
+enabled, which was switched off — so rather than document it on trust,
+[the workflow](.github/workflows/localisation-check.yml) builds the image and
+runs it, asserting the container produces the same findings as the host and that
+exit codes survive the container boundary. That job is the evidence.
+
+`make` on its own lists the targets: `make dev`, `make test`, `make run`,
+`make check`, `make docker`. Override the files with
+`make check OLD=loc_2_0_0.plist NEW=loc_2_1_0.plist`.
+
+</details>
+
+---
+
+<a id="what-it-does-not-catch"></a>
+
+## What it does not catch
 
 - **Whether a string fits its button.** It counts characters; real overflow needs
   font and widget width. Biggest gap, and the thing I want most.
-- **Meaning.** A fluent mistranslation is invisible.
-- **Whether a removed ID is still requested by a shipped client.**
-- **`tk` is Turkmen; the strings are Turkish (`tr`).** Not flagged — `tk` is
-  valid, catching it needs language detection, and it is pre-existing.
+- **Meaning.** A fluent mistranslation is invisible. So is a number attached to
+  the wrong word: the Japanese pool rules say the multiplier decreases "to a
+  maximum of 4" where the source says "to a minimum of 1.0". Every digit is
+  present. No comparison of values reaches that.
+- **Whether a removed text ID is still requested by a shipped client.**
+- **`tk` is Turkmen; the strings are Turkish (`tr`).** Not flagged — `tk` is a
+  valid code, catching it needs language detection, and it is in both files.
 - Numbers below ten, and grapheme-vs-codepoint length for emoji.
-- **Meaning inside a number.** The Japanese pool rules say the multiplier
-  decreases "to a maximum of 4" where the source says "to a minimum of 1.0".
-  Every digit is present, just attached to the wrong word - no comparison of
-  values can see that.
 
-## Smallest version, then what
+<details>
+<summary><strong>How I chose the checks, and the trade-offs</strong></summary>
 
-**v1** was the diff engine, four blocker checks and the fixed/pre-existing
-classification — about an hour, already above the floor. I built the classifier
-*first* because leaving it out is how the tool becomes noise. Then line numbers
-and fix instructions; the quieter content checks; a false-positive corpus; the
-summary-first view; and file discovery so it runs with no arguments.
+<br>
 
-## Trade-offs
+Severity is **what the player experiences**, not how big the edit was: crash or
+blank is a BLOCKER; a language vanishes or the release never lands is HIGH; wrong
+or badly wrapped content is MEDIUM.
+
+Twenty checks: placeholders (malformed, parity, order), empty strings, `A:[a/b]`
+tokens (unbalanced, missing, wrong option count), languages dropped from a key or
+the whole file, removed or duplicated text IDs, entries with no `en-US`, an
+unbumped version, invalid language codes, translations left stale by a reworded
+source, partial language coverage, missing numbers, lost line breaks, length
+outliers, and stray whitespace at a string's edges.
+
+**Trade-offs:**
 
 - **One finding per string**, other problems attached to it. One row in the table
   (the ship/no-ship count), all of them in the card (the fix).
@@ -143,31 +216,72 @@ summary-first view; and file discovery so it runs with no arguments.
   reported as broken. Costs a dropped `0.5`; keeps MEDIUM worth reading.
 - **A `%` after a digit is a percent sign.** `50% off` was being reported as a
   type clash. Every real corruption here has a *letter* before the sign.
-- **Only two-letter language codes judged.** `fil`, `haw` have no two-letter form.
-- **Pre-existing problems hidden** (`--all` shows them) — real, but showing them
-  at release time is how a checklist becomes noise.
+- **Only two-letter language codes judged.** `fil` and `haw` have no two-letter
+  form.
+- **Pre-existing problems hidden** (`--all` shows them). Real, but showing them at
+  release time is how a checklist becomes noise.
 - **Ambiguity refused, not guessed.** A confident report about the wrong pair of
   files is worse than a question.
 
-## Not done, deliberately
+</details>
 
-Config files, per-check toggles, a plugin system, a web UI, spell-checking,
-language detection. Twenty checks don't need a framework — a teammate adds one
-by writing a function returning a `Problem` and appending it to a list.
+<details>
+<summary><strong>Smallest version, what came after, and what I would do next</strong></summary>
 
-I also stopped adding checks: falling catch rate, rising false-positive risk, and
-I hit that cost twice in one afternoon.
+<br>
 
-## Next, with another day
+**v1** was the diff engine, four blocker checks and the fixed/pre-existing
+classification — already above the floor. I built the classifier *first* because
+leaving it out is how the tool becomes noise. Then line numbers and fix
+instructions; the quieter content checks; a corpus of *correct* localisation
+content asserted to stay silent; the summary-first view; and file discovery so it
+runs with no arguments.
 
-1. **Feed it the UI** — component widths would turn the length heuristic into a
+**Deliberately not done:** config files, per-check toggles, a plugin system, a web
+UI, spell-checking, language detection. Twenty checks do not need a framework — a
+teammate adds one by writing a function that returns a `Problem` and appending it
+to a list. I also stopped adding checks: falling catch rate, rising false-positive
+risk, and I hit that cost twice in one afternoon.
+
+**With another day:**
+
+1. **Feed it the UI.** Component widths would turn the length heuristic into a
    real overflow check. The one gap that matters.
 2. **Compare against production**, not the second-newest file.
 3. **Post the summary to the release channel** on every candidate build.
 
-## Assumptions
+</details>
+
+<details>
+<summary><strong>Assumptions</strong></summary>
+
+<br>
 
 `en-US` is the source. Strings are format-processed, so a bare `%` is a risk.
-`\n` is a literal backslash-n. Filenames carry versions, and **the second-newest
-file is the one being replaced** — which can be wrong, so the header always states the pair
-it picked and how many it chose between, and `V` re-picks interactively.
+`\n` is a literal backslash-n. Filenames carry versions.
+
+The tool never says a file is **live**: it can see which version is older, not
+which one production is serving. A build can be cut and never shipped. So the
+report labels the two files `older` and `newer`, states which pair it picked and
+how many it chose between, and `V` re-picks interactively.
+
+</details>
+
+---
+
+## Tests
+
+```bash
+pip install -e ".[dev]"
+pytest
+```
+
+298 of them. The ones that matter are not the coverage: they are
+[`test_false_positives.py`](tests/test_false_positives.py), a corpus of
+localisation content that is **correct** — European decimal commas, promo
+percentages, CJK, right-to-left script, emoji, markup — asserted to produce
+nothing. If a case there starts failing, the tool has become noisier, which is a
+regression even though nothing crashed.
+
+See [FINDINGS.md](FINDINGS.md) for what it found in `localisations_1_2_1.plist`,
+and [AI_USAGE.md](AI_USAGE.md) for how this was built.
