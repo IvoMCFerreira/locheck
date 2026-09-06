@@ -25,6 +25,25 @@ QoL changes: defaults to show summary
 
 if you compare a recent version vs an older one, it breaks, claude only tested going forwards
 
+does it run only on windows?
+release should fail if script has blockers
+
+show json option
+
+will likely run on CI
+exit codes
+if there are blockers it should exit with error code
+should be intgrated
+
+--json could be useful to make a web/mobile app
+
+fazer dockerfile ubuntu
+
+readme should include dockerfile
+requirements should have dependencies
+
+makefile
+
 3. WHAT I'D DO WITH MORE TIME/RESOURCES:
 
 3.1. If I could somehow see the size of the components so I could instantly know if a string will overflow.

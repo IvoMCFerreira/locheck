@@ -27,6 +27,40 @@ The summary appears first; any key expands it into per-finding detail, `V`
 compares a different pair of versions, `Esc` closes. Piped or in CI it prints
 everything at once and never prompts.
 
+**In CI.** The gate is just running it — there is no wrapper and nothing to
+parse:
+
+| exit | meaning |
+|---|---|
+| `0` | nothing blocking |
+| `1` | blockers found (or `--strict` and anything flagged) |
+| `2` | files missing or unreadable |
+
+`--json` gives the whole report as structured output for a bot or a dashboard.
+[`.github/workflows/localisation-check.yml`](.github/workflows/localisation-check.yml)
+is a working example: it runs on any PR touching a `.plist`, fails on blockers,
+and attaches the JSON as an artefact even when the check failed — which is
+exactly when someone wants to read it.
+
+Blockers fail the build; **HIGH findings deliberately do not.** Those mean
+"confirm this was intentional", which is a human call. A gate that refuses them
+teaches people to bypass the gate, and then it catches nothing.
+
+**Docker**, if you would rather not install Python:
+
+```bash
+docker build -t locheck .
+docker run --rm -v "$PWD:/files" locheck            # two newest in this folder
+docker run --rm -v "$PWD:/files" locheck --json
+```
+
+Exit codes pass straight through. The plist files are mounted rather than baked
+in, so the image cannot end up checking its own stale copy.
+
+**`make`** wraps the common ones: `make` on its own lists them, then `make dev`,
+`make test`, `make run`, `make check`, `make docker`. Override the files with
+`make check OLD=loc_2_0_0.plist NEW=loc_2_1_0.plist`.
+
 ## The problem I picked
 
 Not "what changed" — `diff` does that, and the brief calls it the floor. The

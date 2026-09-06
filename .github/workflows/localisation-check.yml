@@ -1,0 +1,47 @@
+# Runs the check on every pull request that touches a localisation file, and
+# fails the build if the candidate has blockers.
+#
+# The tool exits 1 on blockers and 2 on unreadable files, so the gate is just
+# running it - there is no wrapper script and nothing to parse.
+
+name: Localisation check
+
+on:
+  pull_request:
+    paths:
+      - "**/*.plist"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Test the checker itself
+        run: pytest -q
+
+      # Blockers fail the build. HIGH findings do not: they mean "confirm this
+      # was intentional", which is a human call. A gate that refuses those
+      # teaches people to bypass the gate, and then it catches nothing.
+      - name: Check the candidate against the release before it
+        run: locheck localisations_1_2_0.plist localisations_1_2_1.plist --details
+
+      # `if: always()` so the report is attached even when the step above failed,
+      # which is exactly when somebody wants to read it.
+      - name: Save the report
+        if: always()
+        run: locheck localisations_1_2_0.plist localisations_1_2_1.plist --json > report.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: localisation-report
+          path: report.json

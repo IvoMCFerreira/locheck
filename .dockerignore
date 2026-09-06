@@ -1,0 +1,18 @@
+# Only the package and its metadata belong in the image. The plist files are
+# mounted at run time, so baking them in would produce an image that silently
+# checks its own stale copy instead of the caller's files.
+.git
+.github
+tests
+*.plist
+*.md
+*.bat
+Makefile
+Dockerfile
+.dockerignore
+.gitignore
+__pycache__
+*.egg-info
+.pytest_cache
+build
+dist

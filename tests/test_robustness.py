@@ -268,3 +268,44 @@ def test_json_output_is_valid_and_every_finding_is_actionable():
         assert finding["severity"]
         assert finding["code"]
         assert finding["action"], f"{finding['code']} tells the reader nothing to do"
+
+
+# --------------------------------------------------------------------------
+# the contract CI depends on
+# --------------------------------------------------------------------------
+
+def test_the_json_report_carries_the_fields_a_pipeline_reads():
+    """These field names are a public interface now that a workflow uses them.
+
+    Renaming one would break a dashboard silently, so they are pinned here rather
+    than left to whatever the dataclass happens to be called.
+    """
+    result = _run("localisations_1_2_0.plist", "localisations_1_2_1.plist", "--json")
+    payload = json.loads(result.stdout)
+
+    for field in ("baseline", "candidate", "baseline_version", "candidate_version",
+                  "is_rollback", "strings_compared", "strings_changed",
+                  "blocker_count", "flagged_count", "warnings", "findings"):
+        assert field in payload, f"missing top-level field: {field}"
+
+    for field in ("severity", "code", "title", "detail", "key", "lang", "line",
+                  "action", "reference", "before", "after", "also"):
+        assert field in payload["findings"][0], f"missing finding field: {field}"
+
+    assert payload["blocker_count"] == len(
+        [f for f in payload["findings"] if f["severity"] == "BLOCKER"]
+    ), "the count and the findings must agree"
+
+
+def test_json_goes_to_stdout_with_nothing_else_mixed_in():
+    """A pipeline pipes stdout straight into a parser. One stray banner breaks it."""
+    result = _run("localisations_1_2_0.plist", "localisations_1_2_1.plist", "--json")
+    json.loads(result.stdout)  # raises if anything else was printed alongside it
+    assert result.returncode == 1, "blockers still fail the build in --json mode"
+
+
+def test_strict_fails_where_the_default_passes():
+    """The difference between a merge gate and a spotless-branch check."""
+    same = ("localisations_1_2_0.plist", "localisations_1_2_0.plist")
+    assert _run(*same).returncode == 0
+    assert _run(*same, "--strict").returncode == 1
