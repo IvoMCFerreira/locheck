@@ -236,7 +236,22 @@ def _friendly(path_text: str) -> str:
         return path.name
 
 
-def _header(report: Report, auto_detected: int = 0) -> Panel:
+def _is_rollback(report: Report) -> bool:
+    """Whether the candidate is an older release than the file it is replacing.
+
+    Legitimate - it answers "what would shipping the old file undo?" - but it
+    inverts how the whole report reads, because the fixes and regressions are
+    those of going backwards. Worth saying out loud rather than leaving the
+    reader to work out why every finding looks upside down.
+    """
+    from .discover import version_of
+
+    live = version_of(Path(report.baseline_path))
+    candidate = version_of(Path(report.candidate_path))
+    return bool(live and candidate and candidate < live)
+
+
+def _header(report: Report, note: str | None = None) -> Panel:
     grid = Table.grid(padding=(0, 2))
     grid.add_column(style="dim", justify="right")
     grid.add_column()
@@ -251,14 +266,21 @@ def _header(report: Report, auto_detected: int = 0) -> Panel:
         Text(_friendly(report.candidate_path), style="bold"),
         f"version {report.candidate_version}",
     )
-    # How many were on disk goes in the title rather than on a row of its own.
-    # Naming two files out of ten without mentioning the other eight invites the
-    # reader to assume these were the only candidates - and their idea of what is
-    # live may not be the newest file in the folder. It still has to be said; it
-    # does not need a line, and the whole summary has to fit a 30-line console.
+    if _is_rollback(report):
+        grid.add_row(
+            "",
+            Text("rollback: the candidate is the OLDER release", style="bold yellow")
+            + Text("  -  findings describe what shipping it would undo", style="dim"),
+            "",
+        )
+
+    # The note goes in the title rather than on a row of its own: naming two
+    # files out of ten without mentioning the other eight invites the reader to
+    # assume these were the only candidates. It has to be said; it does not need
+    # a line, and the whole summary has to fit a 30-line console.
     title = "Localisation release check"
-    if auto_detected:
-        title += "   newest two of " + str(auto_detected) + " versions found here"
+    if note:
+        title += "   " + note
     return Panel(grid, title=title, title_align="left",
                  box=box.ROUNDED, padding=(0, 1))
 
@@ -320,11 +342,11 @@ def render_summary(
     report: Report,
     console: Console,
     show_all: bool = False,
-    auto_detected: int = 0,
+    note: str | None = None,
     with_footer: bool = True,
 ) -> int:
     """The ship/no-ship view. Returns how many findings have detail to expand."""
-    console.print(_header(report, auto_detected))
+    console.print(_header(report, note))
     console.print(_verdict(report))
 
     if report.warnings:
@@ -383,10 +405,10 @@ def render(
     console: Console | None = None,
     show_all: bool = False,
     summary_only: bool = False,
-    auto_detected: int = 0,
+    note: str | None = None,
 ) -> None:
     """The whole report at once, for anything that is not a live terminal."""
     console = console or Console()
-    render_summary(report, console, show_all, auto_detected, with_footer=True)
+    render_summary(report, console, show_all, note, with_footer=True)
     if not summary_only:
         render_details(report, console, show_all)

@@ -130,6 +130,21 @@ def _legend(console: Console, *, expandable: bool) -> None:
     console.print(row)
 
 
+def _describe(considered: int, by_hand: bool) -> str | None:
+    """How this pair of files came to be chosen.
+
+    A hand-picked pair must not keep saying "newest two of N": the reader chose
+    something else precisely because the automatic pick was not what they wanted,
+    and repeating the claim back at them is the tool insisting on a guess it has
+    already been overruled on.
+    """
+    if not considered:
+        return None
+    if by_hand:
+        return "chosen by hand from " + str(considered) + " versions here"
+    return "newest two of " + str(considered) + " versions found here"
+
+
 def _interactive(live_path, candidate_path, considered: int, args):
     """Show the verdict, then the detail or a different pair, on request.
 
@@ -148,13 +163,15 @@ def _interactive(live_path, candidate_path, considered: int, args):
     console = Console()
     report = analyse(load(live_path), load(candidate_path))
     showing_detail = False
+    by_hand = False
     count = 0
 
     while True:
         if showing_detail:
             render_details(report, console, args.all)
         else:
-            count = render_summary(report, console, args.all, considered)
+            count = render_summary(report, console, args.all,
+                                   _describe(considered, by_hand))
 
         _legend(console, expandable=not showing_detail and bool(count))
 
@@ -178,6 +195,7 @@ def _interactive(live_path, candidate_path, considered: int, args):
                     console.print(Text("  " + str(exc), style="bold red"))
                     return report
                 considered = len(versions_like(candidate_path))
+                by_hand = True
             showing_detail = False  # a new pair starts from its verdict
             continue
 
@@ -237,7 +255,7 @@ def main(argv: list[str] | None = None) -> int:
             console=Console(),
             show_all=args.all,
             summary_only=args.summary,
-            auto_detected=considered,
+            note=_describe(considered, by_hand=False),
         )
 
     if report.blockers:

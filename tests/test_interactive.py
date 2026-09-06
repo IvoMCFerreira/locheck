@@ -317,3 +317,62 @@ def test_the_compared_pair_stays_on_one_line_at_eighty_columns():
     pair = [l for l in buffer.getvalue().splitlines() if "(live)" in l]
     assert len(pair) == 1
     assert "(new)" in pair[0], "the whole comparison must fit on the one line"
+
+
+# --------------------------------------------------------------------------
+# a pair chosen backwards, and a pair chosen by hand
+# --------------------------------------------------------------------------
+
+def test_a_hand_picked_pair_stops_claiming_it_was_automatic(tmp_path):
+    """The header said "newest two of N" after the reader had overruled it.
+
+    They picked something else precisely because the automatic choice was not
+    what they wanted; repeating the claim back is the tool insisting on a guess
+    it has already lost.
+    """
+    output, _ = _drive(tmp_path, keys=["v", "\x1b"], typed=["1 3"])
+    headers = [line for line in output.splitlines() if "Localisation release check" in line]
+    assert "newest two of" in headers[0], "the first pick really was automatic"
+    assert "chosen by hand" in headers[-1]
+    assert "newest two of" not in headers[-1]
+
+
+def test_comparing_backwards_is_labelled_as_a_rollback(tmp_path):
+    """Picking "2 1" is legitimate - it asks what shipping the old file undoes.
+
+    But every finding then reads inverted, so it has to say so. Nothing about
+    the report itself signals the direction, and a reader who does not notice
+    will read regressions as fixes.
+    """
+    output, _ = _drive(tmp_path, keys=["v", "\x1b"], typed=["3 1"])
+    assert "rollback" in output
+    assert "OLDER release" in output
+
+
+def test_a_forwards_comparison_is_not_labelled_a_rollback(tmp_path):
+    output, _ = _drive(tmp_path, keys=["v", "\x1b"], typed=["1 3"])
+    assert "rollback" not in output
+
+
+def test_the_rollback_notice_does_not_fire_on_the_normal_run():
+    assert "rollback" not in _run_interactive("\x1b")
+
+
+def test_explicit_arguments_given_backwards_are_still_labelled():
+    """Two paths on the command line are honoured as typed, and still flagged."""
+    buffer = io.StringIO()
+
+    def console(*args, **kwargs):
+        if kwargs.get("stderr"):
+            return Console(stderr=True)
+        return Console(width=110, file=buffer)
+
+    with mock.patch.object(cli, "someone_is_watching", return_value=True), \
+         mock.patch.object(cli, "read_key", return_value="\x1b"), \
+         mock.patch.object(cli, "Console", console):
+        cli.main([str(ROOT / "localisations_1_2_1.plist"),
+                  str(ROOT / "localisations_1_2_0.plist")])
+
+    output = buffer.getvalue()
+    assert "rollback" in output
+    assert "newest two of" not in output, "explicit paths were not discovered"
