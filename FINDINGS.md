@@ -1,7 +1,8 @@
 # Findings — `localisations_1_2_1.plist`
 
-**Do not ship this as it stands.** Four blockers, three things to confirm, one
-genuine fix. Reproduce with `locheck` in the project folder.
+**Do not ship this as it stands.** Four blockers, three things to confirm, three
+lower-priority items and one genuine fix. Reproduce with `locheck` in the project
+folder.
 
 ---
 
@@ -81,6 +82,8 @@ button.
   (`today / this week / all time`). The client selects by index.
 - **`d8225439` / `jp`, line 45** — the reward text collapsed five lines into one.
   It will not wrap as the UI expects.
+- **`1981dc5a` / `jp`, line 83** — the string starts with a space no other
+  language has. Cosmetic; reported at LOW and does not hold the release.
 
 ## Not a problem — worth saying so
 
@@ -113,6 +116,12 @@ expands it into per-finding detail with file, line and a fix.
 items are "confirm this was intentional" — a human call, not a machine one. If
 that ever inverts, people will start passing `--no-verify`, and then it catches
 nothing.
+
+One thing the tool cannot see, found while checking its own output by hand: the
+Japanese pool rules say the multiplier decreases "to a maximum of 4" where the
+source says "to a minimum of 1.0". Every digit is present, just attached to the
+wrong word — no comparison of values reaches that, and I would not try to make
+one. It needs a human reading Japanese.
 
 The one thing I would ask the team for: **a way to know a string will overflow
 its button.** It is the failure the brief describes that I can only approximate,

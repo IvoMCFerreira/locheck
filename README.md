@@ -52,12 +52,12 @@ Severity is **what the player experiences**, not how big the edit was: crash or
 blank = BLOCKER; a language vanishes or the release never lands = HIGH; wrong or
 badly wrapped content = MEDIUM.
 
-Nineteen checks: placeholders (malformed, parity, order), empty strings,
+Twenty checks: placeholders (malformed, parity, order), empty strings,
 `A:[a/b]` tokens (unbalanced, missing, wrong option count), languages dropped
 from a key or the whole file, removed or duplicated text IDs, entries with no
 `en-US`, an unbumped version, invalid language codes, translations left stale by
 a reworded source, partial language coverage, missing numbers, lost line breaks,
-and length outliers.
+length outliers, and stray whitespace at a string's edges.
 
 ## What it does **not** catch
 
@@ -67,7 +67,11 @@ and length outliers.
 - **Whether a removed ID is still requested by a shipped client.**
 - **`tk` is Turkmen; the strings are Turkish (`tr`).** Not flagged — `tk` is
   valid, catching it needs language detection, and it is pre-existing.
-- Numbers below ten, whitespace-only edits, grapheme-vs-codepoint length.
+- Numbers below ten, and grapheme-vs-codepoint length for emoji.
+- **Meaning inside a number.** The Japanese pool rules say the multiplier
+  decreases "to a maximum of 4" where the source says "to a minimum of 1.0".
+  Every digit is present, just attached to the wrong word - no comparison of
+  values can see that.
 
 ## Smallest version, then what
 
@@ -95,7 +99,7 @@ summary-first view; and file discovery so it runs with no arguments.
 ## Not done, deliberately
 
 Config files, per-check toggles, a plugin system, a web UI, spell-checking,
-language detection. Nineteen checks don't need a framework — a teammate adds one
+language detection. Twenty checks don't need a framework — a teammate adds one
 by writing a function returning a `Problem` and appending it to a list.
 
 I also stopped adding checks: falling catch rate, rising false-positive risk, and

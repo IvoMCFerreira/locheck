@@ -542,6 +542,48 @@ def rule_length(key: str, lang: str, text: str, entry: dict[str, str]) -> Proble
     )
 
 
+def rule_edge_whitespace(
+    key: str, lang: str, text: str, entry: dict[str, str]
+) -> Problem | None:
+    """Leading or trailing whitespace the source string does not have.
+
+    Reported at LOW, so it never holds a release up - it renders as a small
+    indent or gap, not a break. It earns its place because it is almost always
+    accidental: a stray keystroke while editing, which no diff makes obvious and
+    nobody reads a string closely enough to notice.
+
+    Compared against the reference rather than assumed wrong, because a source
+    string that deliberately ends in a space (something the client concatenates
+    onto) wants its translations to do the same.
+    """
+    if not text.strip() or _is_reference(lang):
+        return None
+    reference = reference_for(entry)
+    if reference is None or not reference.strip():
+        return None
+    if reference != reference.strip():
+        return None  # the source has edge whitespace too, so this is deliberate
+    if text == text.strip():
+        return None
+
+    where = []
+    if text != text.lstrip():
+        where.append("starts")
+    if text != text.rstrip():
+        where.append("ends")
+
+    return Problem(
+        code="string.edge_whitespace",
+        title="Stray space at the edge",
+        detail=(
+            " and ".join(where) + " with whitespace that " + REFERENCE_LANG
+            + " does not have - it renders as an indent or a gap"
+        ),
+        severity=Severity.LOW,
+        action="Trim it, unless the client is relying on it to join strings together.",
+    )
+
+
 #: Evaluated in order; the first rule to fire owns the string, so one broken
 #: string never produces three overlapping findings. Ordered by severity, so a
 #: crash is reported ahead of a layout wobble on the same string.
@@ -553,4 +595,5 @@ STRING_RULES = [
     rule_line_structure,
     rule_numbers,
     rule_length,
+    rule_edge_whitespace,
 ]

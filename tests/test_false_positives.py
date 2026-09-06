@@ -209,3 +209,36 @@ def test_the_source_string_is_not_flagged_either(entry, lang):
     assert found == [], (
         "The en-US source was flagged: " + ", ".join(found)
     )
+
+
+# --------------------------------------------------------------------------
+# whitespace at the edges of a string
+# --------------------------------------------------------------------------
+
+def test_edge_whitespace_is_reported_when_the_source_has_none():
+    """Found by auditing the sample data: jp in 1981dc5a starts with a space.
+
+    Almost always a stray keystroke while editing - invisible in a diff, and
+    nobody reads a translated string closely enough to notice.
+    """
+    from locheck.rules import rule_edge_whitespace
+
+    entry = {REF: "Rank 1", "jp": " 1 \u4f4d"}
+    problem = rule_edge_whitespace("k", "jp", entry["jp"], entry)
+    assert problem is not None
+    assert problem.severity.name == "LOW", "an indent does not hold up a release"
+
+
+def test_edge_whitespace_matching_the_source_is_left_alone():
+    """A source that ends in a space is one the client concatenates onto."""
+    from locheck.rules import rule_edge_whitespace
+
+    entry = {REF: "Hello ", "fr": "Bonjour "}
+    assert rule_edge_whitespace("k", "fr", entry["fr"], entry) is None
+
+
+def test_ordinary_strings_are_not_reported_for_whitespace():
+    from locheck.rules import rule_edge_whitespace
+
+    entry = {REF: "Play now", "fr": "Jouer maintenant"}
+    assert rule_edge_whitespace("k", "fr", entry["fr"], entry) is None
