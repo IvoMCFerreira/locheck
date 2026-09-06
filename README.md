@@ -3,6 +3,16 @@
 Checks a candidate localisation plist against the version before it and says
 whether it is safe to ship.
 
+## Running it
+
+**Without a terminal** — put this folder anywhere and **double-click
+`check-localisations.bat`**, or drag one or two `.plist` files onto it. On a
+machine that has never run it, it offers to install what it needs and carries on;
+if there is no Python at all it says where to get one. The window stays open so
+the report can be read.
+
+**With a terminal:**
+
 ```bash
 pip install -e .
 locheck                          # compares the two newest versions in this folder
@@ -10,9 +20,12 @@ locheck new.plist                # compare against the release it replaces
 locheck old.plist new.plist      # spell both out
 ```
 
-No terminal: double-click `check-localisations.bat`, or drag `.plist` files onto
-it. Flags: `--details --all --summary --json --strict`. Exit `0` clean, `1`
-blockers, `2` unreadable. Tests: `pip install -e ".[dev]" && pytest` (270).
+Flags: `--details --all --summary --json --strict`. Exit `0` clean, `1` blockers,
+`2` unreadable. Tests: `pip install -e ".[dev]" && pytest` (295).
+
+The summary appears first; any key expands it into per-finding detail, `V`
+compares a different pair of versions, `Esc` closes. Piped or in CI it prints
+everything at once and never prompts.
 
 ## The problem I picked
 
