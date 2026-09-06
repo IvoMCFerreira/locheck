@@ -57,6 +57,12 @@ docker run --rm -v "$PWD:/files" locheck --json
 Exit codes pass straight through. The plist files are mounted rather than baked
 in, so the image cannot end up checking its own stale copy.
 
+I could not run Docker on the machine I built this on — it needs virtualisation
+enabled, which was switched off — so rather than document it on trust, the
+workflow builds the image and runs it: it checks the container produces the same
+findings as the host, and that `0` and `1` survive the container boundary. That
+job is the evidence.
+
 **`make`** wraps the common ones: `make` on its own lists them, then `make dev`,
 `make test`, `make run`, `make check`, `make docker`. Override the files with
 `make check OLD=loc_2_0_0.plist NEW=loc_2_1_0.plist`.

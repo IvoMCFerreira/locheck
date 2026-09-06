@@ -45,3 +45,35 @@ jobs:
         with:
           name: localisation-report
           path: report.json
+
+  # Neither the author's machine nor the reviewer's necessarily has Docker - it
+  # needs virtualisation enabled, which is often switched off on a work laptop.
+  # So the image is built and exercised here instead of being documented on
+  # trust. This job is the evidence that the Dockerfile works.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -t locheck .
+
+      - name: The entrypoint finds the mounted files on its own
+        run: |
+          docker run --rm -v "$PWD:/files" locheck --json > report.json
+          python -c "import json,sys; d=json.load(open('report.json')); \
+                     assert d['blocker_count'] == 4, d['blocker_count']; \
+                     print('container produced the same', len(d['findings']), 'findings')"
+
+      - name: Exit codes survive the container boundary
+        run: |
+          set +e
+          docker run --rm -v "$PWD:/files" locheck --summary >/dev/null
+          blocked=$?
+          docker run --rm -v "$PWD:/files" locheck \
+            localisations_1_2_0.plist localisations_1_2_0.plist >/dev/null
+          clean=$?
+          set -e
+          echo "blockers -> $blocked, clean -> $clean"
+          test "$blocked" = "1"
+          test "$clean" = "0"
