@@ -273,6 +273,28 @@ def _friendly(path_text: str) -> str:
         return path.name
 
 
+def _declared(path_text: str, declared: str | None) -> Text:
+    """The version the file claims, and a flag when its name says otherwise.
+
+    Without this the sample release renders "version 1.2.0" on both rows -
+    beside files named 1_2_0 and 1_2_1 - and reads as the tool printing the same
+    line twice. It is not: the candidate really does declare the old version,
+    which is finding "Version not bumped". Saying so here turns a line that looks
+    like a rendering fault into the first sign of the actual problem.
+    """
+    from .discover import version_of
+
+    shown = Text("version " + str(declared), style="dim")
+    from_name = version_of(Path(path_text))
+    if not from_name or not declared:
+        return shown
+
+    named = ".".join(str(part) for part in from_name)
+    if named == declared:
+        return shown
+    return shown + Text("  file name says " + named, style="bold yellow")
+
+
 def _header(report: Report, note: str | None = None) -> Panel:
     grid = Table.grid(padding=(0, 2))
     grid.add_column(style="dim", justify="right")
@@ -281,29 +303,34 @@ def _header(report: Report, note: str | None = None) -> Panel:
     grid.add_row(
         "live",
         Text(_friendly(report.baseline_path), style="bold"),
-        f"version {report.baseline_version}",
+        _declared(report.baseline_path, report.baseline_version),
     )
     grid.add_row(
         "candidate",
         Text(_friendly(report.candidate_path), style="bold"),
-        f"version {report.candidate_version}",
+        _declared(report.candidate_path, report.candidate_version),
     )
-    if report.is_rollback:
-        grid.add_row(
-            "",
-            Text("rollback: the candidate is the OLDER release", style="bold yellow")
-            + Text("  -  findings describe what shipping it would undo", style="dim"),
-            "",
-        )
 
     # The note goes in the title rather than on a row of its own: naming two
     # files out of ten without mentioning the other eight invites the reader to
     # assume these were the only candidates. It has to be said; it does not need
     # a line, and the whole summary has to fit a 30-line console.
+    body: list = [grid]
+    if report.is_rollback:
+        # Its own line under the grid rather than a cell inside it. In a column
+        # sized to fit file names this wrapped across three lines and split
+        # "OLDER release" down the middle, which is a poor way to deliver the
+        # one sentence that stops the whole report being read backwards.
+        body.append(
+            Text("rollback", style="bold yellow")
+            + Text(" - the candidate is the older release; findings show what "
+                   "going back would undo", style="dim")
+        )
+
     title = "Localisation release check"
     if note:
         title += "   " + note
-    return Panel(grid, title=title, title_align="left",
+    return Panel(Group(*body), title=title, title_align="left",
                  box=box.ROUNDED, padding=(0, 1))
 
 

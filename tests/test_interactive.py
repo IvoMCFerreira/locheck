@@ -345,8 +345,12 @@ def test_comparing_backwards_is_labelled_as_a_rollback(tmp_path):
     will read regressions as fixes.
     """
     output, _ = _drive(tmp_path, keys=["v", "\x1b"], typed=["3 1"])
-    assert "rollback" in output
-    assert "OLDER release" in output
+    # Collapsed first: the notice is prose inside a panel, so where it wraps
+    # depends on how long the file names beside it happen to be. Asserting on
+    # the raw text made this fail the moment the version column grew.
+    flat = " ".join(output.split())
+    assert "rollback" in flat
+    assert "the candidate is the older release" in flat
 
 
 def test_a_forwards_comparison_is_not_labelled_a_rollback(tmp_path):

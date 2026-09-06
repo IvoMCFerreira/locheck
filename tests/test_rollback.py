@@ -152,3 +152,43 @@ def test_rollback_wording_never_leaks_into_a_release(forwards):
 def test_the_direction_is_in_the_json_for_ci(backwards, forwards):
     assert backwards.as_dict()["is_rollback"] is True
     assert forwards.as_dict()["is_rollback"] is False
+
+
+# --------------------------------------------------------------------------
+# a declared version that disagrees with the file name
+# --------------------------------------------------------------------------
+
+def test_the_header_says_when_a_file_name_disagrees_with_its_version(forwards):
+    """Both sample files declare 1.2.0, so the header shows it twice.
+
+    That is accurate - the candidate really did not bump - but two identical
+    version numbers beside files named 1_2_0 and 1_2_1 read as the tool printing
+    the same line twice. Naming the disagreement turns a line that looks like a
+    rendering fault into the first sign of the actual problem.
+    """
+    rendered = _rendered(forwards)
+    assert "file name says 1.2.1" in rendered
+    assert "version.not_bumped" in {f.code for f in forwards.findings}
+
+
+def test_a_matching_version_says_nothing_extra(tmp_path):
+    for name, version in [("l_1_0_0.plist", "1.0.0"), ("l_1_1_0.plist", "1.1.0")]:
+        (tmp_path / name).write_bytes(
+            plistlib.dumps({"version": version,
+                            "localisations": {"k": {"en-US": "Hi"}}})
+        )
+    report = analyse(load(tmp_path / "l_1_0_0.plist"), load(tmp_path / "l_1_1_0.plist"))
+    assert "file name says" not in _rendered(report)
+
+
+def test_the_rollback_notice_survives_narrow_windows(backwards):
+    """It once wrapped across three lines and split "OLDER release" in half.
+
+    It is the one sentence that stops the whole report being read backwards, so
+    it must arrive intact at any width the reader might have.
+    """
+    for width in (80, 100, 140, 200):
+        buffer = io.StringIO()
+        render(backwards, console=Console(width=width, file=buffer), show_all=True)
+        flat = " ".join(buffer.getvalue().split())
+        assert "the candidate is the older release" in flat, f"broken up at {width}"
