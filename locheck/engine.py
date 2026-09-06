@@ -44,10 +44,10 @@ def _classify(old_problem, new_problem, existed_before, key, lang, before, after
             code=old_problem.code,
             title=("Rolling back fixes: " if rollback else "Fixed: ") + old_problem.title.lower(),
             detail=(
-                "broken in what is live now (" + old_problem.detail + "); the older "
-                "file does not have this problem"
+                "broken in the version you are on (" + old_problem.detail + "); the "
+                "older file does not have this problem"
                 if rollback
-                else "was broken in the live version (" + old_problem.detail + "), now correct"
+                else "was broken before (" + old_problem.detail + ") and is correct after"
             ),
             key=key,
             lang=lang,
@@ -169,7 +169,7 @@ def _file_findings(baseline: LocFile, candidate: LocFile, index, rollback=False)
     # --- version -----------------------------------------------------------
     expected = version_from_filename(candidate.path)
     if candidate.version and candidate.version == baseline.version:
-        detail = "the candidate declares the same version as the live file"
+        detail = "the candidate declares the same version as the older file"
         action = "Bump the version before shipping."
         if expected and expected != candidate.version:
             detail += "; this release should be " + expected
@@ -199,8 +199,8 @@ def _file_findings(baseline: LocFile, candidate: LocFile, index, rollback=False)
                 code="language.dropped",
                 title="Language removed from the whole file",
                 detail=(
-                    "was in {n} of {total} live entries and is in none of the "
-                    "candidate - {verb}"
+                    "was in {n} of {total} entries before and is in none "
+                    "after - {verb}"
                 ).format(
                     n=len(affected), total=len(baseline.entries),
                     verb="rolling back takes '" + lang + "' away from every player on it"
@@ -229,7 +229,7 @@ def _file_findings(baseline: LocFile, candidate: LocFile, index, rollback=False)
                     severity=Severity.HIGH,
                     code="language.missing_from_key",
                     title="Language lost from a key",
-                    detail="translated here in the live version, absent in the candidate",
+                    detail="translated in this entry before and absent after",
                     key=key,
                     lang=lang,
                     before=base_entry[lang],
@@ -252,8 +252,8 @@ def _file_findings(baseline: LocFile, candidate: LocFile, index, rollback=False)
                     "rolling back removes this text ID - any client requesting it "
                     "shows a blank"
                     if rollback
-                    else "present in the live file and absent from the candidate - any "
-                    "client still requesting it shows a blank"
+                    else "present before and absent after - any client still "
+                    "requesting it shows a blank"
                 ),
                 key=key,
                 before=reference_for(baseline.entries[key]),
@@ -393,7 +393,7 @@ def _file_findings(baseline: LocFile, candidate: LocFile, index, rollback=False)
                         + str(len(entries))
                         + " translations reach no one"
                         if is_new
-                        else " - already live, not introduced here"
+                        else " - present before this change too, not introduced by it"
                     )
                 ),
                 lang=lang,

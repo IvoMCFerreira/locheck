@@ -180,10 +180,10 @@ def _card(finding: Finding, number: int, candidate_path: str) -> Panel:
         strings.add_row("en-US", _excerpt(finding.reference))
         shown = True
     if finding.before is not None:
-        strings.add_row("live", _excerpt(finding.before, finding.spans if fixed else ()))
+        strings.add_row("before", _excerpt(finding.before, finding.spans if fixed else ()))
         shown = True
     if finding.after is not None:
-        strings.add_row("new", _excerpt(finding.after, () if fixed else finding.spans))
+        strings.add_row("after", _excerpt(finding.after, () if fixed else finding.spans))
         shown = True
 
     if shown:
@@ -300,13 +300,17 @@ def _header(report: Report, note: str | None = None) -> Panel:
     grid.add_column(style="dim", justify="right")
     grid.add_column()
     grid.add_column(style="dim")
+    # Not "live": the tool knows which file is older, not which one production
+    # is actually serving. A version can be built and never shipped, and calling
+    # the second-newest file "live" states as fact something nobody has checked.
+    before, after = ("newer", "older") if report.is_rollback else ("older", "newer")
     grid.add_row(
-        "live",
+        before,
         Text(_friendly(report.baseline_path), style="bold"),
         _declared(report.baseline_path, report.baseline_version),
     )
     grid.add_row(
-        "candidate",
+        after,
         Text(_friendly(report.candidate_path), style="bold"),
         _declared(report.candidate_path, report.candidate_version),
     )
@@ -363,10 +367,13 @@ def _footer(report: Report, hidden: int) -> Group:
     pair = (
         Text("  ")
         + Text(_friendly(report.baseline_path), style="bold")
-        + Text(" (live)", style="dim")
+        # Same two words as the header, and short enough that the whole line
+        # survives an 80-column console. Which way round it runs is what the
+        # verdict and the rollback notice are for; this line is just the facts.
+        + Text(" (newer)" if report.is_rollback else " (older)", style="dim")
         + Text("  ->  ", style="dim")
         + Text(_friendly(report.candidate_path), style="bold")
-        + Text(" (rolling back to)" if report.is_rollback else " (new)", style="dim")
+        + Text(" (older)" if report.is_rollback else " (newer)", style="dim")
     )
 
     counts = Text("  ")

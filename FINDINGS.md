@@ -9,7 +9,7 @@ genuine fix. Reproduce with `locheck` in the project folder.
 
 ### 1. Spanish is gone from the entire file
 
-`es` was in all three live entries and is in none of the candidate's. Every
+`es` was in all three entries of `1_2_0` and is in none of `1_2_1`. Every
 Spanish-speaking player loses every string in this file at once — the biggest
 blast radius here by a wide margin.
 
@@ -20,8 +20,8 @@ not, `es` needs restoring in `2b827952`, `7a794655` and `d8225439`.
 
 ```
 en-US   Starting in %u...
-live    До начала %u...
-new     До начала %...
+before  До начала %u...
+after   До начала %...
 ```
 
 The `%` is now followed by `...`, which is not a valid format specifier. This is
@@ -50,7 +50,7 @@ render the raw markup to the player, or fail to substitute.
 ### 5. The version was never bumped — line 6
 
 The file is named `1_2_1` but declares `<string>1.2.0</string>` — identical to
-what is live. Depending on how the client and CDN key their caches, **this
+the version it replaces. Depending on how the client and CDN key their caches, **this
 release may never reach a single device.** Cheap to fix, easy to miss, and if it
 ships this way the other four items are academic.
 
@@ -86,15 +86,15 @@ button.
 
 **`2b827952` / `fr`, line 14** changed from `Commence dans % ...` to
 `Commence dans %u...`. Its placeholders changed, which looks alarming, but the
-live version was broken and the new one matches the source. **This is a fix.**
+older version was broken and the new one matches the source. **This is a fix.**
 The tool reports it in green so nobody spends time on it.
 
 Likewise, `d8225439` / `pt-BR` gained an accent (`videos` → `vídeos`). Changed,
 not risky, not reported.
 
 Also noted but **not** this release's problem: `tk` is the code for Turkmen and
-those strings are plainly Turkish (`tr`). That is already live, so it is a ticket
-rather than a blocker.
+those strings are plainly Turkish (`tr`). That is present in both files, so it is a
+ticket rather than a blocker.
 
 ---
 

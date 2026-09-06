@@ -129,8 +129,17 @@ def test_section_headings_follow_the_direction(forwards, backwards):
     assert "Do not ship until these are resolved" not in rolled
 
 
-def test_the_footer_names_the_older_file_as_what_you_roll_back_to(backwards):
-    assert "(rolling back to)" in _rendered(backwards)
+def test_the_footer_names_the_two_files_by_age_in_both_directions(backwards, forwards):
+    """Age is a fact about the files; which one is live is not.
+
+    "(live)" was a claim the tool cannot make - a version can be built and never
+    shipped. Direction is carried by the verdict and the rollback notice, so the
+    footer only has to be true.
+    """
+    for report in (forwards, backwards):
+        rendered = _rendered(report)
+        assert "(older)" in rendered and "(newer)" in rendered
+        assert "(live)" not in rendered
 
 
 def test_forward_wording_never_leaks_into_a_rollback(backwards):
@@ -192,3 +201,19 @@ def test_the_rollback_notice_survives_narrow_windows(backwards):
         render(backwards, console=Console(width=width, file=buffer), show_all=True)
         flat = " ".join(buffer.getvalue().split())
         assert "the candidate is the older release" in flat, f"broken up at {width}"
+
+
+def test_the_word_live_never_appears_in_the_report(forwards, backwards):
+    """The tool knows which file is older. It does not know what production serves.
+
+    A version can be built and never shipped, or rolled back, and nothing in the
+    files records that - so calling the second-newest file "live" states as fact
+    something nobody has checked. The files are described by age instead, which
+    is true whichever direction the comparison runs.
+    """
+    for report in (forwards, backwards):
+        rendered = _rendered(report).lower()
+        assert " live " not in rendered
+        assert "(live)" not in rendered
+        assert "live version" not in rendered
+        assert "live file" not in rendered

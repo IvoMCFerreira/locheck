@@ -1,13 +1,13 @@
 # locheck
 
-Checks a candidate localisation plist against the version that is live and says
+Checks a candidate localisation plist against the version before it and says
 whether it is safe to ship.
 
 ```bash
 pip install -e .
 locheck                          # compares the two newest versions in this folder
 locheck new.plist                # compare against the release it replaces
-locheck live.plist new.plist     # spell both out
+locheck old.plist new.plist      # spell both out
 ```
 
 No terminal: double-click `check-localisations.bat`, or drag `.plist` files onto
@@ -26,9 +26,9 @@ none.
 
 Rules judge one string in isolation — *is this wrong right now?* — and know
 nothing about the previous release. The engine runs **every rule twice**, against
-live and against candidate, and compares:
+the older file and against the newer, and compares:
 
-| live | candidate | verdict |
+| older | newer | verdict |
 |---|---|---|
 | fine | broken | **regression** — blocks the release |
 | broken | broken | **pre-existing** — hidden by default |
@@ -112,5 +112,5 @@ I hit that cost twice in one afternoon.
 
 `en-US` is the source. Strings are format-processed, so a bare `%` is a risk.
 `\n` is a literal backslash-n. Filenames carry versions, and **the second-newest
-file is what is live** — which can be wrong, so the header always states the pair
+file is the one being replaced** — which can be wrong, so the header always states the pair
 it picked and how many it chose between, and `V` re-picks interactively.

@@ -274,7 +274,7 @@ def test_the_files_being_compared_are_named_at_the_bottom_too():
     tail = "\n".join(output.splitlines()[-6:])
     assert "localisations_1_2_0.plist" in tail
     assert "localisations_1_2_1.plist" in tail
-    assert "(live)" in tail and "(new)" in tail
+    assert "(older)" in tail and "(newer)" in tail
 
 
 @pytest.mark.parametrize("width", [80, 100, 120, 200, 240])
@@ -314,9 +314,9 @@ def test_the_compared_pair_stays_on_one_line_at_eighty_columns():
         cli.main([str(ROOT / "localisations_1_2_0.plist"),
                   str(ROOT / "localisations_1_2_1.plist")])
 
-    pair = [l for l in buffer.getvalue().splitlines() if "(live)" in l]
+    pair = [l for l in buffer.getvalue().splitlines() if "(older)" in l]
     assert len(pair) == 1
-    assert "(new)" in pair[0], "the whole comparison must fit on the one line"
+    assert "(newer)" in pair[0], "the whole comparison must fit on the one line"
 
 
 # --------------------------------------------------------------------------
