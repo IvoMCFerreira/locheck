@@ -274,13 +274,13 @@ def _friendly(path_text: str) -> str:
 
 
 def _declared(path_text: str, declared: str | None) -> Text:
-    """The version the file claims, and a flag when its name says otherwise.
+    """The version the file declares, flagged when it is not the one expected.
 
     Without this the sample release renders "version 1.2.0" on both rows -
     beside files named 1_2_0 and 1_2_1 - and reads as the tool printing the same
     line twice. It is not: the candidate really does declare the old version,
-    which is finding "Version not bumped". Saying so here turns a line that looks
-    like a rendering fault into the first sign of the actual problem.
+    which is the "Version not bumped" finding. Naming the discrepancy turns a
+    line that looks like a rendering fault into the first sign of the problem.
     """
     from .discover import version_of
 
@@ -292,7 +292,7 @@ def _declared(path_text: str, declared: str | None) -> Text:
     named = ".".join(str(part) for part in from_name)
     if named == declared:
         return shown
-    return shown + Text("  file name says " + named, style="bold yellow")
+    return shown + Text("  expected " + named, style="bold yellow")
 
 
 def _header(report: Report, note: str | None = None) -> Panel:

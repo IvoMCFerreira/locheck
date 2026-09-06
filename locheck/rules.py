@@ -173,11 +173,11 @@ def rule_empty(key: str, lang: str, text: str, entry: dict[str, str]) -> Problem
     return Problem(
         code="string.empty",
         title="Empty translation",
-        detail="string is empty - " + lang + " players see blank space here",
+        detail="the string is empty - players on '" + lang + "' see blank space",
         severity=Severity.BLOCKER,
         action=(
-            "Restore the " + lang + " translation, or drop the " + lang + " key from "
-            "this entry so the client falls back to " + REFERENCE_LANG + "."
+            "Restore the '" + lang + "' translation, or remove the key so the "
+            "client falls back to " + REFERENCE_LANG + "."
         ),
     )
 
@@ -264,7 +264,7 @@ def rule_placeholders(
         title="Placeholder mismatch",
         detail=REFERENCE_LANG + " has " + _show(ref_tokens) + ", this has " + _show(tokens),
         severity=Severity.BLOCKER,
-        action="Rewrite the " + lang + " string: " + ", then ".join(changes) + ".",
+        action="Rewrite the '" + lang + "' string: " + ", then ".join(changes) + ".",
     )
 
 
@@ -281,8 +281,9 @@ def rule_tokens(
             code="token.unbalanced",
             title="Unclosed substitution token",
             detail=(
-                str(text.count("[")) + " '[' vs " + str(text.count("]")) + " ']' - "
-                "the client will render the raw markup to the player"
+                "brackets do not match: " + str(text.count("[")) + " opening, "
+                + str(text.count("]")) + " closing - the client will render the raw "
+                "markup to the player"
             ),
             severity=Severity.BLOCKER,
             action="Close the bracket so every X:[a/b] slot is complete.",
@@ -441,7 +442,7 @@ def rule_numbers(key: str, lang: str, text: str, entry: dict[str, str]) -> Probl
         detail=REFERENCE_LANG + " mentions " + quoted + ", this translation does not",
         severity=Severity.MEDIUM,
         action=(
-            "Check the " + lang + " text states the same values as " + REFERENCE_LANG
+            "Check the '" + lang + "' text states the same values as " + REFERENCE_LANG
             + " - a mistyped game rule reads as a bug to the player."
         ),
     )

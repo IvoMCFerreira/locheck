@@ -158,16 +158,16 @@ def test_the_direction_is_in_the_json_for_ci(backwards, forwards):
 # a declared version that disagrees with the file name
 # --------------------------------------------------------------------------
 
-def test_the_header_says_when_a_file_name_disagrees_with_its_version(forwards):
+def test_the_header_says_when_a_declared_version_is_not_the_expected_one(forwards):
     """Both sample files declare 1.2.0, so the header shows it twice.
 
     That is accurate - the candidate really did not bump - but two identical
     version numbers beside files named 1_2_0 and 1_2_1 read as the tool printing
-    the same line twice. Naming the disagreement turns a line that looks like a
+    the same line twice. Naming the discrepancy turns a line that looks like a
     rendering fault into the first sign of the actual problem.
     """
     rendered = _rendered(forwards)
-    assert "file name says 1.2.1" in rendered
+    assert "expected 1.2.1" in rendered
     assert "version.not_bumped" in {f.code for f in forwards.findings}
 
 
@@ -178,7 +178,7 @@ def test_a_matching_version_says_nothing_extra(tmp_path):
                             "localisations": {"k": {"en-US": "Hi"}}})
         )
     report = analyse(load(tmp_path / "l_1_0_0.plist"), load(tmp_path / "l_1_1_0.plist"))
-    assert "file name says" not in _rendered(report)
+    assert "expected" not in _rendered(report)
 
 
 def test_the_rollback_notice_survives_narrow_windows(backwards):

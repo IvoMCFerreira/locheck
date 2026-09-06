@@ -169,11 +169,11 @@ def _file_findings(baseline: LocFile, candidate: LocFile, index, rollback=False)
     # --- version -----------------------------------------------------------
     expected = version_from_filename(candidate.path)
     if candidate.version and candidate.version == baseline.version:
-        detail = "candidate declares the same version as the live file"
-        action = "Bump the version string before shipping."
+        detail = "the candidate declares the same version as the live file"
+        action = "Bump the version before shipping."
         if expected and expected != candidate.version:
-            detail += ", but the filename says " + expected
-            action = "Set the version string to " + expected + " to match the filename."
+            detail += "; this release should be " + expected
+            action = "Set the version to " + expected + " before shipping."
         findings.append(
             Finding(
                 severity=Severity.HIGH,
@@ -199,21 +199,20 @@ def _file_findings(baseline: LocFile, candidate: LocFile, index, rollback=False)
                 code="language.dropped",
                 title="Language removed from the whole file",
                 detail=(
-                    "in {n} of {total} entries on the live side and none on the other"
-                    " - {verb}"
+                    "was in {n} of {total} live entries and is in none of the "
+                    "candidate - {verb}"
                 ).format(
                     n=len(affected), total=len(baseline.entries),
-                    verb=("rolling back takes this language away from every "
-                          + lang + " player")
+                    verb="rolling back takes '" + lang + "' away from every player on it"
                     if rollback
-                    else "every " + lang + " player loses all of this text",
+                    else "every player on '" + lang + "' loses all of this text",
                 ),
                 lang=lang,
                 action=(
-                    "Confirm the rollback is worth losing " + lang + " for."
+                    "Confirm the rollback is worth losing '" + lang + "' for."
                     if rollback
-                    else "Confirm this was intended. If not, restore " + lang + " in: "
-                    + ", ".join(k[:8] for k in affected)
+                    else "Confirm this was intended. If not, restore '" + lang
+                    + "' in: " + ", ".join(k[:8] for k in affected)
                 ),
             )
         )
@@ -236,8 +235,8 @@ def _file_findings(baseline: LocFile, candidate: LocFile, index, rollback=False)
                     before=base_entry[lang],
                     line=index.entry(key),
                     action=(
-                        "Restore the " + lang + " string, or confirm this key is meant "
-                        "to fall back to " + REFERENCE_LANG + " for " + lang + " players."
+                        "Restore the '" + lang + "' string, or confirm this entry is "
+                        "meant to fall back to " + REFERENCE_LANG + " for these players."
                     ),
                 )
             )
@@ -253,7 +252,8 @@ def _file_findings(baseline: LocFile, candidate: LocFile, index, rollback=False)
                     "rolling back removes this text ID - any client requesting it "
                     "shows a blank"
                     if rollback
-                    else "was live and is gone - any client still requesting it shows a blank"
+                    else "present in the live file and absent from the candidate - any "
+                    "client still requesting it shows a blank"
                 ),
                 key=key,
                 before=reference_for(baseline.entries[key]),
