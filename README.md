@@ -19,35 +19,11 @@
 &nbsp;·&nbsp;
 <a href="#what-it-does-not-catch">Blind spots</a>
 
+<br><br>
+
+<img src="assets/report.svg" width="100%" alt="locheck reporting four blockers, three items to confirm and one fix on the sample files">
+
 </div>
-
-```
-┌─ Localisation release check   newest two of 2 versions found here ──────────────────────┐
-│ older  localisations_1_2_0.plist  version 1.2.0                                         │
-│ newer  localisations_1_2_1.plist  version 1.2.0  expected 1.2.1                         │
-└─────────────────────────────────────────────────────────────────────────────────────────┘
-┌─────────────────────────────────────────────────────────────────────────────────────────┐
-│                       DO NOT SHIP  ·  4 blockers  ·  3 to confirm                       │
-└─────────────────────────────────────────────────────────────────────────────────────────┘
-
-    #   SEVERITY    LINE   TEXT ID      LANG    ISSUE
- ─────────────────────────────────────────────────────────────────────────────────────────
-    1   BLOCKER        —   —            es      Language removed from the whole file
-    2   BLOCKER       73   1981dc5a     it      Unclosed substitution token
-    3   BLOCKER       16   2b827952     it      Empty translation
-    4   BLOCKER       22   2b827952     ru      Malformed placeholder
-    5   HIGH           6   —            —       Version not bumped
-    6   HIGH          83   —            jp      Language code is not valid
-    7   HIGH           —   7a794655     —       Text ID removed
-    8   MEDIUM        81   1981dc5a     tk      Wrong number of options in a token
-    9   MEDIUM        58   9bb069bc     pt-BR   Number missing from translation
-   10   MEDIUM        45   d8225439     jp      Line breaks lost
-   11   LOW           83   1981dc5a     jp      Stray space at the edge
-   12   FIXED         14   2b827952     fr      Fixed: malformed placeholder
-
-  localisations_1_2_0.plist (older)  ->  localisations_1_2_1.plist (newer)
-  32 strings compared   4 changed   10 need action   1 fixed
-```
 
 Any key expands that into a card per finding with the file, the line, the English
 source, the offending characters highlighted, and what to do about it.

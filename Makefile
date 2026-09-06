@@ -9,7 +9,7 @@ NEW    ?= localisations_1_2_1.plist
 IMAGE  ?= locheck
 
 .DEFAULT_GOAL := help
-.PHONY: help install dev test run summary json check strict docker docker-run clean
+.PHONY: help install dev test run summary json check strict screenshot docker docker-run clean
 
 help:  ## List these targets
 	@grep -E '^[a-z-]+:.*?##' $(MAKEFILE_LIST) \
@@ -44,6 +44,9 @@ check:  ## Fail if the candidate has blockers (for CI)
 # teaches people to skip the gate.
 strict:  ## Fail on anything flagged, not just blockers
 	$(PYTHON) -m locheck $(OLD) $(NEW) --details --strict
+
+screenshot:  ## Regenerate the README image from real output
+	$(PYTHON) tools/make_screenshot.py
 
 docker:  ## Build the container image
 	docker build -t $(IMAGE) .

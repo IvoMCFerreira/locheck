@@ -4,6 +4,8 @@
 .git
 .github
 tests
+tools
+assets
 *.plist
 *.md
 *.bat
