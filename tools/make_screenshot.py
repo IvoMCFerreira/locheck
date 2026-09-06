@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT))
 
 from rich.console import Console  # noqa: E402
 
+from locheck.__main__ import _legend  # noqa: E402
 from locheck.engine import analyse  # noqa: E402
 from locheck.loader import load  # noqa: E402
 from locheck.report import render_summary  # noqa: E402
@@ -39,12 +40,11 @@ def main() -> int:
         console,
         note="newest two of 2 versions found here",
     )
-    console.print()
-    console.print(
-        "  Press any key to see what each finding is and how to fix it, "
-        "or Esc to close.",
-        style="dim",
-    )
+    # The real legend, not a copy of its text. An earlier version of this script
+    # hardcoded the prompt, and it went out of date the moment the prompt changed
+    # - which is the exact failure an exported SVG is supposed to prevent. Every
+    # line in the image now comes from the code that prints it.
+    _legend(console, expandable=True)
 
     OUT.parent.mkdir(exist_ok=True)
     console.save_svg(str(OUT), title="locheck")
