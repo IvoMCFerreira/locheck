@@ -19,26 +19,45 @@ from __future__ import annotations
 import re
 
 from . import langcodes, locate
+from .discover import version_of
 from .loader import LocFile, version_from_filename
 from .model import Finding, Report, Severity
 from .rules import REFERENCE_LANG, STRING_RULES, reference_for
 
 
-def _classify(old_problem, new_problem, existed_before, key, lang, before, after):
-    """Compare a string's problem state across the two releases."""
+def _classify(old_problem, new_problem, existed_before, key, lang, before, after,
+              rollback=False):
+    """Compare a string's problem state across the two releases.
+
+    The verdicts are the same in both directions - what changes is what they
+    mean to the reader. Shipping forward, a new problem was *introduced*; rolling
+    back, the same problem *comes back*, and a "fix" is something the rollback
+    would undo rather than something a translator did. Wording it for the
+    direction is not decoration: read with the forward phrasing, a rollback
+    report says a crash was fixed when it is about to be reintroduced.
+    """
     if new_problem is None:
         if old_problem is None:
             return None
         return Finding(
             severity=Severity.RESOLVED,
             code=old_problem.code,
-            title="Fixed: " + old_problem.title.lower(),
-            detail="was broken in the live version (" + old_problem.detail + "), now correct",
+            title=("Rolling back fixes: " if rollback else "Fixed: ") + old_problem.title.lower(),
+            detail=(
+                "broken in what is live now (" + old_problem.detail + "); the older "
+                "file does not have this problem"
+                if rollback
+                else "was broken in the live version (" + old_problem.detail + "), now correct"
+            ),
             key=key,
             lang=lang,
             before=before,
             after=after,
-            action="Nothing to do. Flagged so a placeholder change here is not mistaken for a break.",
+            action=(
+                "Nothing to do - rolling back happens to repair this."
+                if rollback
+                else "Nothing to do. Flagged so a placeholder change here is not mistaken for a break."
+            ),
             spans=old_problem.spans,
         )
 
@@ -47,7 +66,7 @@ def _classify(old_problem, new_problem, existed_before, key, lang, before, after
             severity=Severity.INFO,
             code=new_problem.code,
             title="Pre-existing: " + new_problem.title.lower(),
-            detail=new_problem.detail + " - already live, not caused by this release",
+            detail=new_problem.detail + " - present in both files, either way",
             key=key,
             lang=lang,
             before=before,
@@ -56,7 +75,11 @@ def _classify(old_problem, new_problem, existed_before, key, lang, before, after
             spans=new_problem.spans,
         )
 
-    origin = "introduced by this release" if existed_before else "new content"
+    if rollback:
+        origin = "comes back if you roll back" if existed_before else "in the older file"
+    else:
+        origin = "introduced by this release" if existed_before else "new content"
+
     return Finding(
         severity=new_problem.severity,
         code=new_problem.code,
@@ -71,7 +94,19 @@ def _classify(old_problem, new_problem, existed_before, key, lang, before, after
     )
 
 
-def _string_findings(baseline: LocFile, candidate: LocFile, index):
+def _direction_is_backwards(baseline: LocFile, candidate: LocFile) -> bool:
+    """Whether the candidate is an older release than the file it replaces.
+
+    Read from the file names rather than the declared `version` fields, because
+    the field is exactly what a release forgets to bump - in the sample data both
+    files declare 1.2.0, so the fields cannot tell the two apart at all.
+    """
+    live = version_of(baseline.path)
+    new = version_of(candidate.path)
+    return bool(live and new and new < live)
+
+
+def _string_findings(baseline: LocFile, candidate: LocFile, index, rollback=False):
     findings = []
     changed = 0
 
@@ -94,7 +129,8 @@ def _string_findings(baseline: LocFile, candidate: LocFile, index):
                 new_problem = rule(key, lang, text, langs)
                 old_problem = rule(key, lang, before, base_entry) if existed_before else None
                 finding = _classify(
-                    old_problem, new_problem, existed_before, key, lang, before, text
+                    old_problem, new_problem, existed_before, key, lang, before, text,
+                    rollback=rollback,
                 )
                 if finding is not None:
                     finding.line = index.string(key, lang)
@@ -127,7 +163,7 @@ def _substantive_change(old: str, new: str) -> bool:
     return normalise(old) != normalise(new)
 
 
-def _file_findings(baseline: LocFile, candidate: LocFile, index):
+def _file_findings(baseline: LocFile, candidate: LocFile, index, rollback=False):
     findings = []
 
     # --- version -----------------------------------------------------------
@@ -163,12 +199,20 @@ def _file_findings(baseline: LocFile, candidate: LocFile, index):
                 code="language.dropped",
                 title="Language removed from the whole file",
                 detail=(
-                    "was in {n} of {total} live entries and is now in none"
-                    " - every {lang} player loses all of this text"
-                ).format(n=len(affected), total=len(baseline.entries), lang=lang),
+                    "in {n} of {total} entries on the live side and none on the other"
+                    " - {verb}"
+                ).format(
+                    n=len(affected), total=len(baseline.entries),
+                    verb=("rolling back takes this language away from every "
+                          + lang + " player")
+                    if rollback
+                    else "every " + lang + " player loses all of this text",
+                ),
                 lang=lang,
                 action=(
-                    "Confirm this was intended. If not, restore " + lang + " in: "
+                    "Confirm the rollback is worth losing " + lang + " for."
+                    if rollback
+                    else "Confirm this was intended. If not, restore " + lang + " in: "
                     + ", ".join(k[:8] for k in affected)
                 ),
             )
@@ -205,7 +249,12 @@ def _file_findings(baseline: LocFile, candidate: LocFile, index):
                 severity=Severity.HIGH,
                 code="key.removed",
                 title="Text ID removed",
-                detail="was live and is gone - any client still requesting it shows a blank",
+                detail=(
+                    "rolling back removes this text ID - any client requesting it "
+                    "shows a blank"
+                    if rollback
+                    else "was live and is gone - any client still requesting it shows a blank"
+                ),
                 key=key,
                 before=reference_for(baseline.entries[key]),
                 action=(
@@ -376,9 +425,10 @@ def _file_findings(baseline: LocFile, candidate: LocFile, index):
 
 def analyse(baseline: LocFile, candidate: LocFile) -> Report:
     index = locate.build(candidate.path)
+    rollback = _direction_is_backwards(baseline, candidate)
 
-    findings, changed = _string_findings(baseline, candidate, index)
-    findings += _file_findings(baseline, candidate, index)
+    findings, changed = _string_findings(baseline, candidate, index, rollback)
+    findings += _file_findings(baseline, candidate, index, rollback)
     findings.sort(key=lambda f: (f.severity.value, f.key or "", f.lang or ""))
 
     return Report(
@@ -391,4 +441,5 @@ def analyse(baseline: LocFile, candidate: LocFile) -> Report:
         strings_changed=changed,
         warnings=[baseline.path.name + ": " + w for w in baseline.warnings]
         + [candidate.path.name + ": " + w for w in candidate.warnings],
+        is_rollback=rollback,
     )

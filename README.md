@@ -34,6 +34,11 @@ live and against candidate, and compares:
 | broken | broken | **pre-existing** — hidden by default |
 | broken | fine | **fixed** — shown in green |
 
+Pass an older file as the candidate and it detects the **rollback** and rewords
+everything for it — verdict, headings and each finding. A crash that "was fixed"
+shipping forward is one that *comes back* rolling back, and reading the forward
+wording in that direction is how you ship the fire you were putting out.
+
 That is `engine._classify`, and it is the whole difference from a diff. It also
 catches the trap in the data: French went `Commence dans % ...` →
 `Commence dans %u...`. Placeholders changed, so a naive check screams — but the

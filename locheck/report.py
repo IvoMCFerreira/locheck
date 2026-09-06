@@ -46,9 +46,24 @@ HEADINGS = {
     Severity.HIGH: "Confirm these are intentional",
     Severity.MEDIUM: "Likely visible to players",
     Severity.LOW: "Cosmetic",
-    Severity.INFO: "Already live - not caused by this release",
+    Severity.INFO: "Present in both files - neither direction fixes them",
     Severity.RESOLVED: "Fixed by this release - no action needed",
 }
+
+#: Rolling back is not a release, and the same findings answer a different
+#: question: not "what did we break?" but "what does going back cost us?"
+ROLLBACK_HEADINGS = {
+    Severity.BLOCKER: "Rolling back would break these",
+    Severity.HIGH: "Rolling back would undo these",
+    Severity.MEDIUM: "Rolling back would degrade these",
+    Severity.LOW: "Cosmetic",
+    Severity.INFO: "Present in both files - neither direction fixes them",
+    Severity.RESOLVED: "Rolling back would repair these",
+}
+
+
+def _heading(severity: Severity, rollback: bool) -> str:
+    return (ROLLBACK_HEADINGS if rollback else HEADINGS)[severity]
 
 _UUID_KEY = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-", re.IGNORECASE)
 _MAX_EXCERPT = 150
@@ -204,8 +219,30 @@ def _card(finding: Finding, number: int, candidate_path: str) -> Panel:
 
 
 def _verdict(report: Report) -> Panel:
+    """The one line the whole report exists to produce.
+
+    A rollback gets its own wording. "DO NOT SHIP" is the wrong answer to
+    "should I roll back?" - the reader may be rolling back *because* production
+    is on fire, and what they need is the price, not a refusal.
+    """
     blockers = len(report.blockers)
     high = sum(1 for f in report.findings if f.severity is Severity.HIGH)
+
+    if report.is_rollback:
+        if blockers:
+            headline = (
+                f"ROLLING BACK BREAKS {blockers} THING{'S' if blockers != 1 else ''}"
+            )
+            if high:
+                headline += f"  ·  {high} more to weigh up"
+            style = "bold white on red"
+        elif high:
+            headline = f"ROLLBACK COSTS {high} THING{'S' if high != 1 else ''}  ·  weigh it up"
+            style = "bold black on yellow"
+        else:
+            headline = "SAFE TO ROLL BACK  ·  nothing lost"
+            style = "bold white on green"
+        return Panel(Text(headline, style=style, justify="center"), box=box.HEAVY, style=style)
 
     if blockers:
         headline = f"DO NOT SHIP  ·  {blockers} blocker{'s' if blockers != 1 else ''}"
@@ -236,21 +273,6 @@ def _friendly(path_text: str) -> str:
         return path.name
 
 
-def _is_rollback(report: Report) -> bool:
-    """Whether the candidate is an older release than the file it is replacing.
-
-    Legitimate - it answers "what would shipping the old file undo?" - but it
-    inverts how the whole report reads, because the fixes and regressions are
-    those of going backwards. Worth saying out loud rather than leaving the
-    reader to work out why every finding looks upside down.
-    """
-    from .discover import version_of
-
-    live = version_of(Path(report.baseline_path))
-    candidate = version_of(Path(report.candidate_path))
-    return bool(live and candidate and candidate < live)
-
-
 def _header(report: Report, note: str | None = None) -> Panel:
     grid = Table.grid(padding=(0, 2))
     grid.add_column(style="dim", justify="right")
@@ -266,7 +288,7 @@ def _header(report: Report, note: str | None = None) -> Panel:
         Text(_friendly(report.candidate_path), style="bold"),
         f"version {report.candidate_version}",
     )
-    if _is_rollback(report):
+    if report.is_rollback:
         grid.add_row(
             "",
             Text("rollback: the candidate is the OLDER release", style="bold yellow")
@@ -317,7 +339,7 @@ def _footer(report: Report, hidden: int) -> Group:
         + Text(" (live)", style="dim")
         + Text("  ->  ", style="dim")
         + Text(_friendly(report.candidate_path), style="bold")
-        + Text(" (new)", style="dim")
+        + Text(" (rolling back to)" if report.is_rollback else " (new)", style="dim")
     )
 
     counts = Text("  ")
@@ -388,7 +410,7 @@ def render_details(report: Report, console: Console, show_all: bool = False) -> 
         console.print()
         console.print(
             Text(f" {label} ", style=style)
-            + Text(f"  {HEADINGS[severity]}", style="bold")
+            + Text(f"  {_heading(severity, report.is_rollback)}", style="bold")
             + Text(f"  ({len(group)})", style="dim")
         )
         for finding in group:

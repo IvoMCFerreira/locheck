@@ -115,6 +115,13 @@ class Report:
     strings_compared: int
     strings_changed: int
     warnings: list[str]
+    #: True when the candidate is an OLDER release than the file it replaces.
+    #:
+    #: Legitimate - it asks "what would shipping the old file undo?" - but it
+    #: inverts how every finding reads, so the wording of the verdict, the
+    #: section headings and each finding follows from it. A reader who does not
+    #: notice the direction will read a reintroduced crash as a fix.
+    is_rollback: bool = False
 
     @property
     def blockers(self) -> list[Finding]:
@@ -139,6 +146,7 @@ class Report:
             "candidate": self.candidate_path,
             "baseline_version": self.baseline_version,
             "candidate_version": self.candidate_version,
+            "is_rollback": self.is_rollback,
             "strings_compared": self.strings_compared,
             "strings_changed": self.strings_changed,
             "blocker_count": len(self.blockers),

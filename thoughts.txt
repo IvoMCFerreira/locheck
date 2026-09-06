@@ -23,6 +23,8 @@ run it with no arguments and it takes the latest 2
 
 QoL changes: defaults to show summary
 
+if you compare a recent version vs an older one, it breaks, claude only tested going forwards
+
 3. WHAT I'D DO WITH MORE TIME/RESOURCES:
 
 3.1. If I could somehow see the size of the components so I could instantly know if a string will overflow.
