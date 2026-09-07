@@ -9,6 +9,12 @@
 <img src="https://img.shields.io/badge/checks-20-blue" alt="20 checks">
 <img src="https://img.shields.io/badge/dependencies-1-lightgrey" alt="1 dependency">
 
+<br>
+
+<img src="assets/report.svg" width="100%" alt="locheck reporting four blockers, three items to confirm and one fix on the sample files">
+
+<br><br>
+
 <a href="#run-it">Run it</a>
 &nbsp;·&nbsp;
 <a href="#the-idea-it-rests-on">The idea</a>
@@ -18,10 +24,6 @@
 <a href="#in-ci">CI</a>
 &nbsp;·&nbsp;
 <a href="#what-it-does-not-catch">Blind spots</a>
-
-<br><br>
-
-<img src="assets/report.svg" width="100%" alt="locheck reporting four blockers, three items to confirm and one fix on the sample files">
 
 </div>
 
