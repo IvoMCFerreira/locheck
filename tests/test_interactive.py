@@ -9,6 +9,7 @@ the build sits there until it times out, with no indication why.
 from __future__ import annotations
 
 import io
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -109,6 +110,22 @@ def test_a_detached_stream_is_not_a_watching_human():
     with mock.patch("sys.stdin") as fake:
         fake.isatty.side_effect = ValueError("I/O operation on closed file")
         assert someone_is_watching() is False
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the NUL device is Windows-only")
+def test_the_null_device_is_not_a_watching_human():
+    """On Windows, isatty() answers "is this a character device", and NUL is one.
+
+    So a report sent to NUL claimed to be a terminal, the interactive path ran,
+    and the tool sat on `msvcrt.getwch()` waiting for a keypress at a console
+    nobody was watching. Redirecting output is the one case that has to stay
+    safe. Asserted against the real device on purpose: mocking isatty is exactly
+    what hid this, because the mock answers the question the way we assumed.
+    """
+    with open(os.devnull, "w") as sink, open(os.devnull) as source:
+        assert sink.isatty(), "premise: Windows calls the NUL device a tty"
+        with mock.patch("sys.stdout", sink), mock.patch("sys.stdin", source):
+            assert someone_is_watching() is False
 
 
 def _run_subprocess(*args, timeout=30) -> subprocess.CompletedProcess:

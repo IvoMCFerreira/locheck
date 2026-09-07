@@ -24,8 +24,39 @@ def someone_is_watching() -> bool:
     platforms, hence the guard.
     """
     try:
-        return bool(sys.stdin.isatty() and sys.stdout.isatty())
+        if not (sys.stdin.isatty() and sys.stdout.isatty()):
+            return False
     except (AttributeError, ValueError):
+        return False
+
+    # On Windows that answer is not specific enough to act on. See below.
+    if sys.platform == "win32":
+        return _is_a_real_console(sys.stdin) and _is_a_real_console(sys.stdout)
+
+    return True
+
+
+def _is_a_real_console(stream) -> bool:
+    """Whether a Windows stream is an actual console, not just a character device.
+
+    `isatty()` on Windows means "is this a character device", and the NUL device
+    is one. So `locheck ... > NUL` looked like a terminal to the guard above, the
+    interactive path ran, and the tool sat on a keypress at a console the reader
+    was not watching. `GetConsoleMode` succeeds only for a real console handle,
+    which is the question the guard meant to ask all along.
+
+    Anything unexpected here counts as "not a console": refusing to prompt costs
+    a keypress, and prompting where nobody can answer costs the whole run.
+    """
+    try:
+        import ctypes
+        import msvcrt
+        from ctypes import wintypes
+
+        handle = msvcrt.get_osfhandle(stream.fileno())
+        mode = wintypes.DWORD()
+        return bool(ctypes.windll.kernel32.GetConsoleMode(handle, ctypes.byref(mode)))
+    except Exception:
         return False
 
 

@@ -5,7 +5,7 @@
 <p><strong>Tells a releaser which localisation changes could actually break the game.</strong></p>
 
 <img src="https://img.shields.io/badge/python-3.9%2B-blue" alt="Python 3.9+">
-<img src="https://img.shields.io/badge/tests-302%20passing-brightgreen" alt="302 tests">
+<img src="https://img.shields.io/badge/tests-303%20passing-brightgreen" alt="303 tests">
 <img src="https://img.shields.io/badge/checks-20-blue" alt="20 checks">
 <img src="https://img.shields.io/badge/dependencies-1-lightgrey" alt="1 dependency">
 
@@ -252,7 +252,7 @@ pip install -e ".[dev]"
 pytest
 ```
 
-302 of them. The ones that matter are not the coverage: they are
+303 of them. The ones that matter are not the coverage: they are
 [`test_false_positives.py`](tests/test_false_positives.py), a corpus of
 localisation content that is **correct** — European decimal commas, promo
 percentages, CJK, right-to-left script, emoji, markup — asserted to produce
