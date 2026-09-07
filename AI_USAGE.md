@@ -16,14 +16,17 @@ showed me only the worst problems. That drove most of what followed.
 
 ## Three things it gave me that I kept
 
-**The idea the tool is built on.** I started out thinking a diff would do. It
-pushed back, said the diff is the engine and not the product, and suggested
-running every check against both files instead of one. Then the same problem
-means three things depending on the older file: this release broke it, it was
-already broken, or this release fixed it. That is the whole tool. It is why the
-French countdown, which changed from `% ...` to `%u...`, comes out green as a fix
-instead of red as a risk. That is the trap the brief warns about and I would have
-walked into it.
+**The mechanism the verdicts rest on.** My notes from before any code existed say
+the tool could not be too simple, or the problem would already be solved by
+something off the shelf. So I was not looking for a diff. What I did not have yet
+was the mechanism. It suggested running every check against both files rather
+than against the new one alone, and that is the hinge the whole thing turns on:
+the same problem then means three different things depending on the older file.
+This release broke it, it was already broken, or this release fixed it. That is
+the whole tool. It is why the French countdown, which changed from `% ...` to
+`%u...`, comes out green as a fix instead of red as a risk. Severity without that
+distinction is guesswork, and guessing on severity is the trap the brief warns
+about.
 
 **`jp` should be `ja`.** The new Japanese strings are filed under `jp`, the
 country code for Japan. The language code is `ja`. So the translations are
@@ -54,6 +57,58 @@ run and neither of us had noticed.
 cannot know that. A version can be built and never shipped. The README even
 listed it as an assumption while the output stated it as fact. It says older and
 newer now.
+
+## Making it something a person would want to use
+
+Beyond that detail view, a lot of what I asked for had nothing to do with
+correctness. A release check that is unpleasant to read gets skipped, and a check
+that gets skipped catches nothing. My note after the first working version was
+that it was verbose and gimmicky to use, and the line I kept coming back to was
+this: make it work, make it pretty.
+
+So the shape of the tool is mostly quality of life decisions I pushed for.
+
+**It defaults to the summary.** The verdict and the table are what you need in
+order to decide whether to ship. The detail sits behind one keypress, for when
+you have already decided to fix something.
+
+**It needs no arguments.** Run it in a folder and it works out which two versions
+you meant, newest against the one before it. Nobody should have to type two paths
+to do the obvious thing.
+
+**Each problem is reported once, at its worst severity.** That has a cost I knew
+about when I chose it, because a blocker can hide a smaller issue in the same
+string. I took the trade anyway: a list nobody reads to the end catches nothing.
+
+None of this came for free. It is the part it was weakest at unprompted, and the
+part I spent the most time sending back.
+
+## Built to be dropped into a pipeline
+
+The other half of the direction was that this should not stay something you run
+by hand on a laptop. My notes partway through: it will likely run on CI, it
+should be integrated, and a release should fail if the checker finds blockers.
+That is a constraint rather than a feature, and it decided several things.
+
+**Exit codes carry the verdict.** 0 nothing blocking, 1 blockers, 2 files
+unreadable. The gate is just running the tool, so there is no wrapper script and
+nothing to parse.
+
+**`--json` prints the whole report as data.** Partly for a pipeline to read, and
+partly because it is the seam a web or mobile front end would sit on if this ever
+grew one.
+
+**A container image.** Pinned and self contained, with no Python needed on the
+host, so a laptop and a build agent give the same answer. The README covers how
+to run it, and `pyproject.toml` names the dependencies in one place instead of
+leaving you to discover them by running the tool.
+
+**A Makefile.** The handful of things you actually do with this are one word
+each.
+
+The workflow in `.github` applies the same idea to the repo itself. Any pull
+request touching a plist runs the checker, and a separate job builds the
+container image and checks that the exit codes survive the container boundary.
 
 ## How I checked it
 
