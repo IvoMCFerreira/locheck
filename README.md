@@ -13,8 +13,6 @@
 
 <img src="assets/report.svg" width="100%" alt="locheck reporting four blockers, three items to confirm and one fix on the sample files">
 
-<br><br>
-
 <a href="#run-it">Run it</a>
 &nbsp;·&nbsp;
 <a href="#the-idea-it-rests-on">The idea</a>
