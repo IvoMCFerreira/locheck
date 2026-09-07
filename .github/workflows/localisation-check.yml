@@ -1,12 +1,22 @@
-# Runs the check on every pull request that touches a localisation file, and
-# fails the build if the candidate has blockers.
+# Two jobs, both on Linux. `check` proves the checker works: the test suite,
+# then the checker run against the sample pair with its verdict asserted.
 #
-# The tool exits 1 on blockers and 2 on unreadable files, so the gate is just
-# running it - there is no wrapper script and nothing to parse.
+# That last distinction matters. On a real localisation repo the gate is just
+# running the tool and letting a non-zero exit fail the build, which is what the
+# README describes wiring up. Here the candidate is the exercise's deliberately
+# seeded file: it has four blockers by design, so a job that propagated the exit
+# code could never go green, and a permanently red build says nothing about
+# whether the tool works. So this asserts the verdict it should reach instead.
+#
+# The tool exits 0 for nothing blocking, 1 on blockers, 2 on unreadable files.
 
 name: Localisation check
 
 on:
+  # `branches` on push so a pull request does not run everything twice.
+  push:
+    branches:
+      - main
   pull_request:
     paths:
       - "**/*.plist"
@@ -28,17 +38,27 @@ jobs:
       - name: Test the checker itself
         run: pytest -q
 
-      # Blockers fail the build. HIGH findings do not: they mean "confirm this
-      # was intentional", which is a human call. A gate that refuses those
-      # teaches people to bypass the gate, and then it catches nothing.
-      - name: Check the candidate against the release before it
-        run: locheck localisations_1_2_0.plist localisations_1_2_1.plist --details
+      # Exit 1 is the pass condition here, because the seeded candidate really
+      # does have four blockers. HIGH findings deliberately do not fail a real
+      # gate: they mean "confirm this was intentional", which is a human call,
+      # and a gate that refuses those teaches people to bypass it.
+      - name: The checker finds the seeded issues and says so in its exit code
+        run: |
+          set +e
+          locheck localisations_1_2_0.plist localisations_1_2_1.plist --details
+          code=$?
+          set -e
+          echo "exit code $code (1 = blockers found, expected on this candidate)"
+          test "$code" = "1"
 
-      # `if: always()` so the report is attached even when the step above failed,
-      # which is exactly when somebody wants to read it.
+      # Exits 1 for the same expected reason, so the code is swallowed here: the
+      # report is wanted either way. `if: always()` attaches it even when an
+      # earlier step failed, which is exactly when somebody wants to read it.
       - name: Save the report
         if: always()
-        run: locheck localisations_1_2_0.plist localisations_1_2_1.plist --json > report.json
+        run: |
+          locheck localisations_1_2_0.plist localisations_1_2_1.plist --json > report.json || true
+          test -s report.json
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -58,10 +78,16 @@ jobs:
       - name: Build the image
         run: docker build -t locheck .
 
+      # The run is expected to exit 1, so capture it rather than let it end the
+      # step before a single assertion has run.
       - name: The entrypoint finds the mounted files on its own
         run: |
+          set +e
           docker run --rm -v "$PWD:/files" locheck --json > report.json
-          python -c "import json,sys; d=json.load(open('report.json')); \
+          code=$?
+          set -e
+          test "$code" = "1"
+          python -c "import json; d=json.load(open('report.json')); \
                      assert d['blocker_count'] == 4, d['blocker_count']; \
                      print('container produced the same', len(d['findings']), 'findings')"
 
