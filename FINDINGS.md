@@ -1,6 +1,6 @@
 # Findings — `localisations_1_2_1.plist`
 
-**Do not ship this as it stands.** Four blockers, three things to confirm, three
+**Do not ship this as it stands.** Four blockers, three things to confirm, four
 lower-priority items and one genuine fix. Reproduce with `locheck` in the project
 folder.
 
