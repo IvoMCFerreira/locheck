@@ -7,7 +7,10 @@ name = "locheck"
 version = "0.1.0"
 description = "Check a localisation plist against the version that is live, and say whether it is safe to ship."
 requires-python = ">=3.9"
-dependencies = ["rich>=13.0"]
+# Upper bound because rich draws the whole report: a major release could
+# change the rendering, and `test_readme_image.py` compares the committed
+# image against live output. Raise it deliberately, not by surprise.
+dependencies = ["rich>=13.0,<16"]
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
