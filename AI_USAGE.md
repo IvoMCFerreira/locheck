@@ -11,22 +11,21 @@ way it was meant. Then to read the two plist files, write the tool, write the
 tests, and later to attack its own work.
 
 I set the direction before any code existed. Python, a CLI, severity levels, and
-the rule I wrote in my notes before starting: do not overflag. I would rather it
-showed me only the worst problems. That drove most of what followed.
+the rule I wrote down before starting: do not overflag. I would rather see only
+the worst problems. That drove most of what followed.
 
 ## Three things it gave me that I kept
 
-**The mechanism the verdicts rest on.** My notes from before any code existed say
-the tool could not be too simple, or the problem would already be solved by
-something off the shelf. So I was not looking for a diff. What I did not have yet
-was the mechanism. It suggested running every check against both files rather
-than against the new one alone, and that is the hinge the whole thing turns on:
-the same problem then means three different things depending on the older file.
-This release broke it, it was already broken, or this release fixed it. That is
-the whole tool. It is why the French countdown, which changed from `% ...` to
-`%u...`, comes out green as a fix instead of red as a risk. Severity without that
-distinction is guesswork, and guessing on severity is the trap the brief warns
-about.
+**The mechanism the verdicts rest on.** I was not looking for a diff. My starting
+note was that the tool could not be too simple, or the problem would already be
+solved by something off the shelf. What I did not have was the mechanism. It
+suggested running every check against both files rather than the new one alone,
+and that is the hinge: the same problem then means three different things
+depending on the older file. This release broke it, it was already broken, or
+this release fixed it. That is the whole tool. It is why the French countdown,
+which changed from `% ...` to `%u...`, comes out green as a fix instead of red as
+a risk. Severity without that distinction is guesswork, and guessing on severity
+is the trap the brief warns about.
 
 **`jp` should be `ja`.** The new Japanese strings are filed under `jp`, the
 country code for Japan. The language code is `ja`. So the translations are
@@ -40,12 +39,10 @@ broken" and "line 22".
 
 ## Three things I sent back
 
-**The first version of the output.** It told me things were flagged but not what
-or where. No line numbers, nothing to act on. It ran fine and was useless. The
-whole detail view exists because I sent it back: file and line, the English
-source to compare against, the highlighted characters, and a line saying what to
-do. This is what I meant in my notes about it not doing a great job of making
-this human friendly.
+**The first version of the output.** It said things were flagged but not what or
+where. It ran fine and was useless. The whole detail view exists because I sent
+it back: file and line, the English source to compare against, the offending
+characters highlighted, and a line saying what to do.
 
 **The way it wrote.** The report said "file name says 1.2.1", which reads like a
 note to yourself, not a tool other people use. Fixing the wording turned up
@@ -53,62 +50,38 @@ something worse. Language codes were being dropped into sentences as plain words
 so with Italian it said "it players see blank space here". That had been in every
 run and neither of us had noticed.
 
-**Calling a file "live".** The tool described the older file as the live one. It
-cannot know that. A version can be built and never shipped. The README even
-listed it as an assumption while the output stated it as fact. It says older and
-newer now.
+**Calling a file "live".** It described the older file as the live one. It cannot
+know that, because a version can be built and never shipped. The README listed it
+as an assumption while the output stated it as fact. It says older and newer now.
 
-## Making it something a person would want to use
+## The direction I set
 
-Beyond that detail view, a lot of what I asked for had nothing to do with
-correctness. A release check that is unpleasant to read gets skipped, and a check
-that gets skipped catches nothing. My note after the first working version was
-that it was verbose and gimmicky to use, and the line I kept coming back to was
-this: make it work, make it pretty.
+Half of what I asked for had nothing to do with correctness. A release check that
+is unpleasant to read gets skipped, and a check that gets skipped catches
+nothing. The other half was that this should not stay something you run by hand
+on a laptop: it would run on CI, and a release should fail if it finds blockers.
 
-So the shape of the tool is mostly quality of life decisions I pushed for.
+**Summary first.** The verdict and the table are what decide the ship call. The
+detail sits behind one keypress, for when you have decided to fix something.
 
-**It defaults to the summary.** The verdict and the table are what you need in
-order to decide whether to ship. The detail sits behind one keypress, for when
-you have already decided to fix something.
+**No arguments needed.** Run it in a folder and it works out which two versions
+you meant, newest against the one before it.
 
-**It needs no arguments.** Run it in a folder and it works out which two versions
-you meant, newest against the one before it. Nobody should have to type two paths
-to do the obvious thing.
+**One finding per string, at its worst severity.** That has a cost I knew about:
+a blocker can hide a smaller issue in the same string. I took the trade anyway,
+because a list nobody reads to the end catches nothing.
 
-**Each problem is reported once, at its worst severity.** That has a cost I knew
-about when I chose it, because a blocker can hide a smaller issue in the same
-string. I took the trade anyway: a list nobody reads to the end catches nothing.
+**Exit codes carry the verdict.** 0 nothing blocking, 1 blockers, 2 unreadable
+files. The gate is just running the tool, so there is nothing to parse.
 
-None of this came for free. It is the part it was weakest at unprompted, and the
-part I spent the most time sending back.
-
-## Built to be dropped into a pipeline
-
-The other half of the direction was that this should not stay something you run
-by hand on a laptop. My notes partway through: it will likely run on CI, it
-should be integrated, and a release should fail if the checker finds blockers.
-That is a constraint rather than a feature, and it decided several things.
-
-**Exit codes carry the verdict.** 0 nothing blocking, 1 blockers, 2 files
-unreadable. The gate is just running the tool, so there is no wrapper script and
-nothing to parse.
-
-**`--json` prints the whole report as data.** Partly for a pipeline to read, and
-partly because it is the seam a web or mobile front end would sit on if this ever
-grew one.
-
-**A container image.** Pinned and self contained, with no Python needed on the
-host, so a laptop and a build agent give the same answer. The README covers how
-to run it, and `pyproject.toml` names the dependencies in one place instead of
-leaving you to discover them by running the tool.
-
-**A Makefile.** The handful of things you actually do with this are one word
+**`--json`, a container image, a Makefile.** Data for a pipeline to read, and the
+seam a web or mobile front end would sit on later. The same answer on a laptop
+and on a build agent, with the README covering how to run it and `pyproject.toml`
+naming the dependencies in one place. The few things you actually do, one word
 each.
 
-The workflow in `.github` applies the same idea to the repo itself. Any pull
-request touching a plist runs the checker, and a separate job builds the
-container image and checks that the exit codes survive the container boundary.
+This was the part it was weakest at unprompted, and the part I spent the most
+time sending back.
 
 ## How I checked it
 
