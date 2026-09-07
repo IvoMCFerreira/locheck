@@ -112,18 +112,24 @@ def test_a_detached_stream_is_not_a_watching_human():
         assert someone_is_watching() is False
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="the NUL device is Windows-only")
 def test_the_null_device_is_not_a_watching_human():
-    """On Windows, isatty() answers "is this a character device", and NUL is one.
+    """Output sent to the null device must never count as somebody watching.
 
-    So a report sent to NUL claimed to be a terminal, the interactive path ran,
-    and the tool sat on `msvcrt.getwch()` waiting for a keypress at a console
-    nobody was watching. Redirecting output is the one case that has to stay
-    safe. Asserted against the real device on purpose: mocking isatty is exactly
-    what hid this, because the mock answers the question the way we assumed.
+    Windows is where this bites. `isatty()` there answers "is this a character
+    device", and NUL is one, so a report sent to NUL claimed to be a terminal,
+    the interactive path ran, and the tool sat on `msvcrt.getwch()` waiting for a
+    keypress at a console nobody was watching. On POSIX `isatty()` says no by
+    itself, so the same call is already safe there.
+
+    The guarantee is the same on both, so this asserts the guarantee rather than
+    the platform, and the premise that made it fail is checked where it applies.
+    Against the real device on purpose: mocking isatty is exactly what hid this,
+    because a mock answers the question the way we assumed rather than the way
+    the platform does.
     """
     with open(os.devnull, "w") as sink, open(os.devnull) as source:
-        assert sink.isatty(), "premise: Windows calls the NUL device a tty"
+        if sys.platform == "win32":
+            assert sink.isatty(), "premise: Windows calls the NUL device a tty"
         with mock.patch("sys.stdout", sink), mock.patch("sys.stdin", source):
             assert someone_is_watching() is False
 
