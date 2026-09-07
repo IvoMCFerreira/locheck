@@ -3,7 +3,12 @@
 # Override any of these:
 #   make check OLD=loc_2_0_0.plist NEW=loc_2_1_0.plist
 
-PYTHON ?= python
+# Debian and Ubuntu ship no `python` binary - only `python3` - so a hardcoded
+# `python` here fails on exactly the Linux machines this is meant to run on.
+# The probe runs each candidate instead of just looking for it on PATH, because
+# Windows has a `python3` that exists and exits 49 telling you to visit the
+# Microsoft Store. Override for a specific interpreter: make test PYTHON=python3.11
+PYTHON ?= $(shell python3 -c "" >/dev/null 2>&1 && echo python3 || echo python)
 OLD    ?= localisations_1_2_0.plist
 NEW    ?= localisations_1_2_1.plist
 IMAGE  ?= locheck
